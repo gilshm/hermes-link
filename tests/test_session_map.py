@@ -21,6 +21,7 @@ class SessionMapTests(unittest.TestCase):
                 session_map.get(source_session_id="source-a", agent="agent_b"),
                 "session-b",
             )
+            self.assertEqual(session_map.entries(), [("source-a", "agent_b", "session-b")])
 
 
 if __name__ == "__main__":

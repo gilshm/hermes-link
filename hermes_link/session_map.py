@@ -17,6 +17,15 @@ class SessionMap:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
+    def entries(self) -> list[tuple[str, str, str]]:
+        entries = []
+        for key, target_session_id in sorted(self._load().items()):
+            source_session_id, sep, agent = key.partition(":")
+            if not sep:
+                continue
+            entries.append((source_session_id, agent, target_session_id))
+        return entries
+
     def _load(self) -> dict[str, str]:
         if not self.path.exists():
             return {}

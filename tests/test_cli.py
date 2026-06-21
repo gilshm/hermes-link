@@ -33,6 +33,18 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("\033[", output.getvalue())
 
+    def test_sessions_command_prints_session_map(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "session-map.json"
+            path.write_text('{"source-a:agent_b": "session-b"}', encoding="utf-8")
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(["sessions", "--path", str(path)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("source-a -> agent_b: session-b", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

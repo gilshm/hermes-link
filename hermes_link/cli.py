@@ -9,6 +9,7 @@ from uuid import uuid4
 from hermes_link.hermes_runner import HermesRunner
 from hermes_link.log import EventLog, default_log_path, format_event, iter_events
 from hermes_link.org import load_org
+from hermes_link.session_map import SessionMap
 from hermes_link.status import inspect_agent, yes_no
 
 
@@ -35,6 +36,9 @@ def main(argv: list[str] | None = None) -> int:
     agents = subparsers.add_parser("agents", help="Show configured org agents")
     agents.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
     agents.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
+
+    sessions = subparsers.add_parser("sessions", help="Show Hermes Link session mappings")
+    sessions.add_argument("--path", type=Path, default=REPO_ROOT / ".hermes-link" / "session-map.json")
 
     args = parser.parse_args(argv)
     if args.command == "chat":
@@ -66,6 +70,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  skill installed: {yes_no(status.skill_installed)}")
             print(f"  plugin installed: {yes_no(status.plugin_installed)}")
             print(f"  plugin enabled: {yes_no(status.plugin_enabled)}")
+        return 0
+    if args.command == "sessions":
+        entries = SessionMap(args.path).entries()
+        if not entries:
+            print("No session mappings.")
+            return 0
+        for source_session_id, agent, target_session_id in entries:
+            print(f"{source_session_id} -> {agent}: {target_session_id}")
         return 0
 
     raise AssertionError(f"unhandled command: {args.command}")
