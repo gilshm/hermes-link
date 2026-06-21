@@ -9,6 +9,7 @@ from uuid import uuid4
 from hermes_link.hermes_runner import HermesRunner
 from hermes_link.log import EventLog, default_log_path, format_event, iter_events
 from hermes_link.org import load_org
+from hermes_link.status import inspect_agent, yes_no
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,10 @@ def main(argv: list[str] | None = None) -> int:
     log.add_argument("--interval", type=float, default=1.0)
     log.add_argument("--color", choices=["auto", "always", "never"], default="auto")
 
+    agents = subparsers.add_parser("agents", help="Show configured org agents")
+    agents.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
+    agents.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
+
     args = parser.parse_args(argv)
     if args.command == "chat":
         result = HermesRunner(
@@ -50,6 +55,17 @@ def main(argv: list[str] | None = None) -> int:
             return _watch_log(args.path, interval=args.interval, color=color)
         for event in iter_events(args.path):
             print(format_event(event, color=color))
+        return 0
+    if args.command == "agents":
+        org = load_org(args.org)
+        for name in sorted(org.agents):
+            status = inspect_agent(org.agents[name], hermes_home=args.hermes_home)
+            print(f"{name}")
+            print(f"  command: {status.agent.command} ({'found' if status.command_available else 'missing'})")
+            print(f"  expertise: {status.agent.expertise or 'not specified'}")
+            print(f"  skill installed: {yes_no(status.skill_installed)}")
+            print(f"  plugin installed: {yes_no(status.plugin_installed)}")
+            print(f"  plugin enabled: {yes_no(status.plugin_enabled)}")
         return 0
 
     raise AssertionError(f"unhandled command: {args.command}")
