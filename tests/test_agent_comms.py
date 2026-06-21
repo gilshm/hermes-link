@@ -154,6 +154,30 @@ class AgentCommsTests(unittest.TestCase):
         self.assertEqual(routed.message, Message("agent_a", "agent_b", "hello"))
         self.assertEqual(routed.turn.session_id, "session-a")
 
+    def test_runner_rejects_missing_agent_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  agent_a:",
+                        "    command: missing-agent-a",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+
+            with self.assertRaisesRegex(RuntimeError, "agent command not found"):
+                HermesRunner(org, cwd=root).request_send("agent_a", "hello")
+
     def test_runner_resolves_topic_send_directive_to_default_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

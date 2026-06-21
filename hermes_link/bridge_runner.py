@@ -18,7 +18,7 @@ def main() -> int:
     org = load_org(repo_root / "config" / "org.yaml")
 
     from_agent = _required(payload, "from_agent")
-    to_agent = _required(payload, "to")
+    to_agent = org.resolve_agent(_required(payload, "to"))
     body = _required(payload, "body")
     max_messages = int(payload.get("max_messages") or 4)
     source_session_id = str(payload.get("source_session_id") or "").strip()

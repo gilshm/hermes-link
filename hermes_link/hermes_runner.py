@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -124,6 +125,8 @@ class HermesRunner:
 
     def _run_agent(self, agent: str, prompt: str) -> AgentTurn:
         command = self._org.agents[agent].command
+        if shutil.which(command) is None:
+            raise RuntimeError(f"agent command not found for {agent}: {command}")
         args = [command, "chat", "-Q", "--pass-session-id", "--safe-mode", "--ignore-rules", "--toolsets", ""]
         if agent in self._sessions:
             args.extend(["-r", self._sessions[agent]])
