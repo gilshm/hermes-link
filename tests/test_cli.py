@@ -45,6 +45,41 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("source-a -> agent_b: session-b", output.getvalue())
 
+    def test_org_validate_command_reports_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            org = root / "config" / "org.yaml"
+            org.parent.mkdir()
+            org.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  agent_a:",
+                        "    command: agent_a",
+                        "    expertise: Coordinator",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            skill = root / "skills" / "agent-comms" / "SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text("skill", encoding="utf-8")
+            plugin = root / ".hermes" / "plugins" / "hermes-link" / "plugin.yaml"
+            plugin.parent.mkdir(parents=True)
+            plugin.write_text("name: hermes-link", encoding="utf-8")
+            output = io.StringIO()
+
+            with (
+                mock.patch("sys.stdout", output),
+                mock.patch("hermes_link.validation.shutil.which", return_value="/bin/agent_a"),
+                mock.patch("hermes_link.cli.REPO_ROOT", root),
+            ):
+                exit_code = main(["org", "validate", "--org", str(org)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("org config ok", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

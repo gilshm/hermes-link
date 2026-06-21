@@ -11,6 +11,7 @@ from hermes_link.log import EventLog, default_log_path, format_event, iter_event
 from hermes_link.org import load_org
 from hermes_link.session_map import SessionMap
 from hermes_link.status import inspect_agent, yes_no
+from hermes_link.validation import validate_org
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
 
     sessions = subparsers.add_parser("sessions", help="Show Hermes Link session mappings")
     sessions.add_argument("--path", type=Path, default=REPO_ROOT / ".hermes-link" / "session-map.json")
+
+    org_parser = subparsers.add_parser("org", help="Org configuration commands")
+    org_subparsers = org_parser.add_subparsers(dest="org_command", required=True)
+    org_validate = org_subparsers.add_parser("validate", help="Validate config/org.yaml")
+    org_validate.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
 
     args = parser.parse_args(argv)
     if args.command == "chat":
@@ -78,6 +84,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         for source_session_id, agent, target_session_id in entries:
             print(f"{source_session_id} -> {agent}: {target_session_id}")
+        return 0
+    if args.command == "org" and args.org_command == "validate":
+        errors = validate_org(args.org, repo_root=REPO_ROOT)
+        if errors:
+            for error in errors:
+                print(f"ERROR: {error}")
+            return 1
+        print("org config ok")
         return 0
 
     raise AssertionError(f"unhandled command: {args.command}")
