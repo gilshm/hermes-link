@@ -122,6 +122,43 @@ class AgentCommsTests(unittest.TestCase):
         self.assertEqual(result.final_response, "reply")
         self.assertEqual(len(calls), 1)
 
+    def test_runner_rejects_repeated_routed_message(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  agent_a:",
+                        "    command: agent_a",
+                        "  agent_b:",
+                        "    command: agent_b",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            outputs = [
+                "session_id: session-a\nSEND agent_b: same message",
+                "session_id: session-b\nSEND agent_a: other message",
+                "session_id: session-a\nSEND agent_b:  SAME   message ",
+            ]
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
+
+            with (
+                mock.patch("subprocess.run", side_effect=fake_run),
+                self.assertRaisesRegex(RuntimeError, "repeated routed message"),
+            ):
+                HermesRunner(org, cwd=root).chat("agent_a", "start")
+
     def test_runner_can_request_one_send_directive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

@@ -73,6 +73,7 @@ class HermesRunner:
 
         transcript: list[Message] = [Message("user", agent, prompt)]
         turns: list[AgentTurn] = []
+        seen_messages: set[tuple[str, str, str]] = set()
         current_agent = agent
         current_prompt = self._agent_prompt(prompt, allow_tools=False)
 
@@ -99,6 +100,10 @@ class HermesRunner:
                 to_session_id=self._sessions.get(recipient),
                 body=directive.body,
             )
+            signature = (current_agent, recipient, _normalize_body(directive.body))
+            if signature in seen_messages:
+                raise RuntimeError(f"repeated routed message detected: {current_agent} -> {recipient}")
+            seen_messages.add(signature)
             if recipient == stop_recipient:
                 return ChatResult(transcript, turns, directive.body)
             current_prompt = self._agent_prompt(
@@ -229,3 +234,7 @@ def _clean_response(output: str) -> str:
         and "Resumed session " not in line
     ]
     return "\n".join(lines).strip()
+
+
+def _normalize_body(body: str) -> str:
+    return " ".join(body.casefold().split())
