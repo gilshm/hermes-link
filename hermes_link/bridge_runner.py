@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from hermes_link.hermes_runner import HermesRunner
+from hermes_link.log import EventLog
 from hermes_link.org import load_org
 from hermes_link.session_map import SessionMap
 
@@ -21,14 +22,23 @@ def main() -> int:
     body = _required(payload, "body")
     max_messages = int(payload.get("max_messages") or 4)
     source_session_id = str(payload.get("source_session_id") or "").strip()
-    session_map = SessionMap(_state_dir(repo_root) / "session-map.json")
+    state_dir = _state_dir(repo_root)
+    event_log = EventLog(_log_path(repo_root, state_dir))
+    event_log.write(
+        "bridge_request",
+        from_agent=from_agent,
+        to_agent=to_agent,
+        source_session_id=source_session_id,
+        body=body,
+    )
+    session_map = SessionMap(state_dir / "session-map.json")
     sessions = {}
     if source_session_id:
         target_session_id = session_map.get(source_session_id=source_session_id, agent=to_agent)
         if target_session_id:
             sessions[to_agent] = target_session_id
 
-    runner = HermesRunner(org, cwd=repo_root, sessions=sessions)
+    runner = HermesRunner(org, cwd=repo_root, sessions=sessions, event_log=event_log)
     result = runner.chat(
         to_agent,
         f"{from_agent} sent you this message:\n\n{body}",
@@ -61,6 +71,13 @@ def _state_dir(repo_root: Path) -> Path:
     if configured:
         return Path(configured)
     return repo_root / ".hermes-link"
+
+
+def _log_path(repo_root: Path, state_dir: Path) -> Path:
+    configured = os.environ.get("HERMES_LINK_LOG")
+    if configured:
+        return Path(configured)
+    return state_dir / "events.jsonl"
 
 
 if __name__ == "__main__":

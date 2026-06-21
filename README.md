@@ -64,6 +64,20 @@ and resumes the same Hermes session for each agent.
 directory in routed prompts so agents have a reason to contact the right peer instead
 of guessing from ids alone.
 
+Show the message log:
+
+```bash
+bin/hermes_link log
+```
+
+Watch messages live:
+
+```bash
+bin/hermes_link log --watch
+```
+
+The default log file is `.hermes-link/events.jsonl`.
+
 ## Test
 
 ```bash

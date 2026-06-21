@@ -40,9 +40,12 @@ class BridgeRunnerTests(unittest.TestCase):
                 bridge_runner.main()
                 bridge_runner.main()
 
-        self.assertNotIn("-r", calls[0])
-        self.assertIn("-r", calls[1])
-        self.assertEqual(calls[1][calls[1].index("-r") + 1], "session-b")
+            self.assertNotIn("-r", calls[0])
+            self.assertIn("-r", calls[1])
+            self.assertEqual(calls[1][calls[1].index("-r") + 1], "session-b")
+            events = (root / "state" / "events.jsonl").read_text(encoding="utf-8")
+            self.assertIn('"event": "bridge_request"', events)
+            self.assertIn('"event": "final"', events)
 
 
 class _Capture:

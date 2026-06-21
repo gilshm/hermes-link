@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from hermes_link.directive import parse_send_directive
+from hermes_link.log import EventLog
 from hermes_link.message import Message
 from hermes_link.org import OrgConfig
 
@@ -41,12 +42,14 @@ class HermesRunner:
         cwd: Path,
         timeout: int = 120,
         sessions: dict[str, str] | None = None,
+        event_log: EventLog | None = None,
     ) -> None:
         self._org = org
         self._cwd = cwd
         self._timeout = timeout
         self._sessions: dict[str, str] = dict(sessions or {})
         self._skill_text = org.skill_path.read_text(encoding="utf-8")
+        self._event_log = event_log
 
     @property
     def sessions(self) -> dict[str, str]:
@@ -75,10 +78,24 @@ class HermesRunner:
             turns.append(turn)
             directive = parse_send_directive(turn.response)
             if directive is None:
+                self._log(
+                    "final",
+                    agent=current_agent,
+                    session_id=turn.session_id,
+                    body=turn.response,
+                )
                 return ChatResult(transcript, turns, turn.response)
 
             self._ensure_agent(directive.recipient)
             transcript.append(Message(current_agent, directive.recipient, directive.body))
+            self._log(
+                "message",
+                from_agent=current_agent,
+                to_agent=directive.recipient,
+                from_session_id=turn.session_id,
+                to_session_id=self._sessions.get(directive.recipient),
+                body=directive.body,
+            )
             if directive.recipient == stop_recipient:
                 return ChatResult(transcript, turns, directive.body)
             current_prompt = self._agent_prompt(
@@ -128,6 +145,10 @@ class HermesRunner:
         session_id = self._session_id_from_output(command, completed.stdout)
         self._sessions[agent] = session_id
         return AgentTurn(agent=agent, session_id=session_id, response=_clean_response(completed.stdout))
+
+    def _log(self, event: str, **fields: object) -> None:
+        if self._event_log is not None:
+            self._event_log.write(event, **fields)
 
     def _session_id_from_output(self, command: str, output: str) -> str:
         match = _SESSION_RE.search(output)
