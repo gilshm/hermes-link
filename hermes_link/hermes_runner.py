@@ -65,7 +65,7 @@ class HermesRunner:
         max_messages: int | None = None,
         stop_recipient: str | None = None,
     ) -> ChatResult:
-        self._ensure_agent(agent)
+        agent = self._resolve_agent(agent)
         limit = max_messages if max_messages is not None else self._org.max_messages
         if limit < 1:
             raise ValueError("max_messages must be at least 1")
@@ -88,17 +88,17 @@ class HermesRunner:
                 )
                 return ChatResult(transcript, turns, turn.response)
 
-            self._ensure_agent(directive.recipient)
-            transcript.append(Message(current_agent, directive.recipient, directive.body))
+            recipient = self._resolve_agent(directive.recipient)
+            transcript.append(Message(current_agent, recipient, directive.body))
             self._log(
                 "message",
                 from_agent=current_agent,
-                to_agent=directive.recipient,
+                to_agent=recipient,
                 from_session_id=turn.session_id,
-                to_session_id=self._sessions.get(directive.recipient),
+                to_session_id=self._sessions.get(recipient),
                 body=directive.body,
             )
-            if directive.recipient == stop_recipient:
+            if recipient == stop_recipient:
                 return ChatResult(transcript, turns, directive.body)
             current_prompt = self._agent_prompt(
                 "Original user request:\n"
@@ -106,19 +106,19 @@ class HermesRunner:
                 f"{current_agent} sent you this message:\n\n{directive.body}",
                 allow_tools=False,
             )
-            current_agent = directive.recipient
+            current_agent = recipient
 
         raise RuntimeError("agent exchange exceeded max_messages")
 
     def request_send(self, agent: str, prompt: str) -> RoutedSend:
-        self._ensure_agent(agent)
+        agent = self._resolve_agent(agent)
         turn = self._run_agent(agent, self._agent_prompt(prompt, allow_tools=False))
         directive = parse_send_directive(turn.response)
         if directive is None:
             raise RuntimeError(f"{agent} did not emit a SEND directive:\n{turn.response}")
-        self._ensure_agent(directive.recipient)
+        recipient = self._resolve_agent(directive.recipient)
         return RoutedSend(
-            message=Message(agent, directive.recipient, directive.body),
+            message=Message(agent, recipient, directive.body),
             turn=turn,
         )
 
@@ -207,11 +207,14 @@ class HermesRunner:
             agent = self._org.agents[name]
             detail = agent.expertise or "No expertise description provided."
             lines.append(f"- {name}: {detail}")
+        for name in sorted(self._org.topics):
+            topic = self._org.topics[name]
+            members = ", ".join(topic.agents)
+            lines.append(f"- @{name}: topic default {topic.default}; agents: {members}")
         return "\n".join(lines)
 
-    def _ensure_agent(self, agent: str) -> None:
-        if agent not in self._org.agents:
-            raise ValueError(f"unknown agent: {agent}")
+    def _resolve_agent(self, target: str) -> str:
+        return self._org.resolve_agent(target)
 
 
 def _clean_response(output: str) -> str:

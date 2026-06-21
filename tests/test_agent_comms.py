@@ -16,6 +16,10 @@ class AgentCommsTests(unittest.TestCase):
             parse_send_directive("SEND agent_b: hello there"),
             SendDirective("agent_b", "hello there"),
         )
+        self.assertEqual(
+            parse_send_directive("SEND @review: hello there"),
+            SendDirective("@review", "hello there"),
+        )
         self.assertIsNone(parse_send_directive("hello user"))
 
     def test_load_org(self) -> None:
@@ -25,6 +29,7 @@ class AgentCommsTests(unittest.TestCase):
         self.assertEqual(org.agents["agent_a"].command, "agent_a")
         self.assertIn("coordinator", org.agents["agent_a"].expertise)
         self.assertIn("Second-opinion", org.agents["agent_b"].expertise)
+        self.assertEqual(org.resolve_agent("@review"), "agent_b")
         self.assertEqual(org.skill_path.name, "SKILL.md")
 
     def test_runner_routes_send_directives_and_reuses_agent_sessions(self) -> None:
@@ -148,6 +153,42 @@ class AgentCommsTests(unittest.TestCase):
 
         self.assertEqual(routed.message, Message("agent_a", "agent_b", "hello"))
         self.assertEqual(routed.turn.session_id, "session-a")
+
+    def test_runner_resolves_topic_send_directive_to_default_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  agent_a:",
+                        "    command: agent_a",
+                        "  agent_b:",
+                        "    command: agent_b",
+                        "topics:",
+                        "  review:",
+                        "    default: agent_b",
+                        "    agents:",
+                        "      - agent_b",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND @review: hello", stderr="")
+
+            with mock.patch("subprocess.run", side_effect=fake_run):
+                routed = HermesRunner(org, cwd=root).request_send("agent_a", "say hello")
+
+        self.assertEqual(routed.message, Message("agent_a", "agent_b", "hello"))
 
     def test_runner_includes_agent_expertise_in_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

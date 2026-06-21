@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 
 
-_SEND_RE = re.compile(r"^\s*SEND\s+([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$", re.DOTALL)
+_SEND_RE = re.compile(r"^\s*SEND\s+(@?[A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$", re.DOTALL)
 
 
 @dataclass(frozen=True)

@@ -12,5 +12,11 @@ agents:
       sanity-checking ideas, spotting gaps, and giving a brief independent
       response back to agent_a.
 
+topics:
+  review:
+    default: agent_b
+    agents:
+      - agent_b
+
 skill: skills/agent-comms/SKILL.md
 max_messages: 10
