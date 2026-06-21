@@ -53,9 +53,7 @@ def main() -> int:
         max_messages=max_messages,
         stop_recipient=from_agent,
     )
-    for message in result.transcript[1:]:
-        print(f"{message.sender} -> {message.recipient}: {message.body}")
-    print(result.final_response)
+    print(_format_transcript(result, final_agent=to_agent))
     if source_session_id:
         for agent, session_id in runner.sessions.items():
             if agent != from_agent:
@@ -72,6 +70,14 @@ def _required(payload: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"missing required field: {key}")
     return value.strip()
+
+
+def _format_transcript(result, *, final_agent: str) -> str:
+    lines = ["Hermes Link transcript:"]
+    for message in result.transcript[1:]:
+        lines.append(f"{message.sender} -> {message.recipient}: {message.body}")
+    lines.append(f"Final from {final_agent}: {result.final_response}")
+    return "\n".join(lines)
 
 
 def _state_dir(repo_root: Path) -> Path:

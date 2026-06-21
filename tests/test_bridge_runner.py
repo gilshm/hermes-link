@@ -35,7 +35,7 @@ class BridgeRunnerTests(unittest.TestCase):
                 mock.patch("sys.stdin.read", return_value=json.dumps(payload)),
                 mock.patch.dict(os.environ, {"HERMES_LINK_HOME": str(root), "HERMES_LINK_STATE_DIR": str(root / "state")}),
                 mock.patch("subprocess.run", side_effect=fake_run),
-                mock.patch.object(sys, "stdout", new_callable=_Capture),
+                mock.patch.object(sys, "stdout", new_callable=_Capture) as output,
             ):
                 bridge_runner.main()
                 bridge_runner.main()
@@ -44,9 +44,11 @@ class BridgeRunnerTests(unittest.TestCase):
             self.assertIn("-r", calls[1])
             self.assertEqual(calls[1][calls[1].index("-r") + 1], "session-b")
             events = (root / "state" / "events.jsonl").read_text(encoding="utf-8")
-        self.assertIn('"event": "bridge_request"', events)
-        self.assertIn('"event": "final"', events)
-        self.assertIn('"thread_id": "session-a"', events)
+            self.assertIn('"event": "bridge_request"', events)
+            self.assertIn('"event": "final"', events)
+            self.assertIn('"thread_id": "session-a"', events)
+            self.assertIn("Hermes Link transcript:", output.value)
+            self.assertIn("Final from agent_b:", output.value)
 
 
 class _Capture:
