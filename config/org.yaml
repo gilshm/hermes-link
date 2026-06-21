@@ -1,0 +1,16 @@
+agents:
+  agent_a:
+    command: agent_a
+    expertise: >
+      General coordinator and first-contact agent. Good for understanding the
+      user's request, deciding whether another agent should help, and combining
+      replies into a concise final answer.
+  agent_b:
+    command: agent_b
+    expertise: >
+      Second-opinion and review agent. Good for answering delegated questions,
+      sanity-checking ideas, spotting gaps, and giving a brief independent
+      response back to agent_a.
+
+skill: skills/agent-comms/SKILL.md
+max_messages: 10

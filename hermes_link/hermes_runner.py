@@ -1,0 +1,200 @@
+from __future__ import annotations
+
+import re
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+from hermes_link.directive import parse_send_directive
+from hermes_link.message import Message
+from hermes_link.org import OrgConfig
+
+
+_SESSION_RE = re.compile(r"^session_id:\s*(\S+)\s*$", re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class AgentTurn:
+    agent: str
+    session_id: str
+    response: str
+
+
+@dataclass(frozen=True)
+class ChatResult:
+    transcript: list[Message]
+    turns: list[AgentTurn]
+    final_response: str
+
+
+@dataclass(frozen=True)
+class RoutedSend:
+    message: Message
+    turn: AgentTurn
+
+
+class HermesRunner:
+    def __init__(
+        self,
+        org: OrgConfig,
+        *,
+        cwd: Path,
+        timeout: int = 120,
+        sessions: dict[str, str] | None = None,
+    ) -> None:
+        self._org = org
+        self._cwd = cwd
+        self._timeout = timeout
+        self._sessions: dict[str, str] = dict(sessions or {})
+        self._skill_text = org.skill_path.read_text(encoding="utf-8")
+
+    @property
+    def sessions(self) -> dict[str, str]:
+        return dict(self._sessions)
+
+    def chat(
+        self,
+        agent: str,
+        prompt: str,
+        *,
+        max_messages: int | None = None,
+        stop_recipient: str | None = None,
+    ) -> ChatResult:
+        self._ensure_agent(agent)
+        limit = max_messages if max_messages is not None else self._org.max_messages
+        if limit < 1:
+            raise ValueError("max_messages must be at least 1")
+
+        transcript: list[Message] = [Message("user", agent, prompt)]
+        turns: list[AgentTurn] = []
+        current_agent = agent
+        current_prompt = self._agent_prompt(prompt, allow_tools=False)
+
+        for _ in range(limit):
+            turn = self._run_agent(current_agent, current_prompt)
+            turns.append(turn)
+            directive = parse_send_directive(turn.response)
+            if directive is None:
+                return ChatResult(transcript, turns, turn.response)
+
+            self._ensure_agent(directive.recipient)
+            transcript.append(Message(current_agent, directive.recipient, directive.body))
+            if directive.recipient == stop_recipient:
+                return ChatResult(transcript, turns, directive.body)
+            current_prompt = self._agent_prompt(
+                "Original user request:\n"
+                f"{prompt}\n\n"
+                f"{current_agent} sent you this message:\n\n{directive.body}",
+                allow_tools=False,
+            )
+            current_agent = directive.recipient
+
+        raise RuntimeError("agent exchange exceeded max_messages")
+
+    def request_send(self, agent: str, prompt: str) -> RoutedSend:
+        self._ensure_agent(agent)
+        turn = self._run_agent(agent, self._agent_prompt(prompt, allow_tools=False))
+        directive = parse_send_directive(turn.response)
+        if directive is None:
+            raise RuntimeError(f"{agent} did not emit a SEND directive:\n{turn.response}")
+        self._ensure_agent(directive.recipient)
+        return RoutedSend(
+            message=Message(agent, directive.recipient, directive.body),
+            turn=turn,
+        )
+
+    def _run_agent(self, agent: str, prompt: str) -> AgentTurn:
+        command = self._org.agents[agent].command
+        args = [command, "chat", "-Q", "--pass-session-id", "--safe-mode", "--ignore-rules", "--toolsets", ""]
+        if agent in self._sessions:
+            args.extend(["-r", self._sessions[agent]])
+        args.extend(["-q", prompt])
+
+        completed = subprocess.run(
+            args,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=self._timeout,
+            cwd=self._cwd,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"{command} failed with exit code {completed.returncode}\n"
+                f"stdout:\n{completed.stdout}\n"
+                f"stderr:\n{completed.stderr}"
+            )
+
+        session_id = self._session_id_from_output(command, completed.stdout)
+        self._sessions[agent] = session_id
+        return AgentTurn(agent=agent, session_id=session_id, response=_clean_response(completed.stdout))
+
+    def _session_id_from_output(self, command: str, output: str) -> str:
+        match = _SESSION_RE.search(output)
+        if match is None:
+            return self._latest_session_id(command)
+        return match.group(1)
+
+    def _latest_session_id(self, command: str) -> str:
+        completed = subprocess.run(
+            [command, "sessions", "list"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=self._timeout,
+            cwd=self._cwd,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"{command} sessions list failed with exit code {completed.returncode}\n"
+                f"stdout:\n{completed.stdout}\n"
+                f"stderr:\n{completed.stderr}"
+            )
+        match = re.search(r"\b(\d{8}_\d{6}_[0-9a-f]+)\b", completed.stdout)
+        if match is None:
+            raise RuntimeError(f"{command} sessions list did not include a session id:\n{completed.stdout}")
+        return match.group(1)
+
+    def _agent_prompt(self, body: str, *, allow_tools: bool) -> str:
+        agent_directory = self._agent_directory()
+        if allow_tools:
+            instructions = self._skill_text
+        else:
+            instructions = (
+                "You are being called by Hermes Link as a routed recipient.\n"
+                "Do not call tools. Do not call route_message.\n"
+                "If you need to send the next message to another agent, output exactly:\n"
+                "SEND agent_id: message\n"
+                "If you are done, answer normally."
+            )
+        return (
+            "Hermes Link org directory:\n"
+            f"{agent_directory}\n\n"
+            "Hermes Link routing instructions:\n"
+            f"{instructions}\n\n"
+            "User or routed message:\n"
+            f"{body}"
+        )
+
+    def _agent_directory(self) -> str:
+        lines = []
+        for name in sorted(self._org.agents):
+            agent = self._org.agents[name]
+            detail = agent.expertise or "No expertise description provided."
+            lines.append(f"- {name}: {detail}")
+        return "\n".join(lines)
+
+    def _ensure_agent(self, agent: str) -> None:
+        if agent not in self._org.agents:
+            raise ValueError(f"unknown agent: {agent}")
+
+
+def _clean_response(output: str) -> str:
+    lines = [
+        line
+        for line in output.splitlines()
+        if line.strip()
+        and not line.startswith("session_id:")
+        and "Resumed session " not in line
+    ]
+    return "\n".join(lines).strip()

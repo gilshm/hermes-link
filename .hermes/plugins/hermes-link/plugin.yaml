@@ -1,0 +1,7 @@
+name: hermes-link
+version: "0.1.0"
+description: Route messages between Hermes profiles through Hermes Link.
+author: Hermes Link Contributors
+kind: standalone
+provides_tools:
+  - route_message
