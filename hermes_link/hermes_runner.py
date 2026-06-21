@@ -43,6 +43,7 @@ class HermesRunner:
         timeout: int = 120,
         sessions: dict[str, str] | None = None,
         event_log: EventLog | None = None,
+        thread_id: str | None = None,
     ) -> None:
         self._org = org
         self._cwd = cwd
@@ -50,6 +51,7 @@ class HermesRunner:
         self._sessions: dict[str, str] = dict(sessions or {})
         self._skill_text = org.skill_path.read_text(encoding="utf-8")
         self._event_log = event_log
+        self._thread_id = thread_id
 
     @property
     def sessions(self) -> dict[str, str]:
@@ -148,6 +150,8 @@ class HermesRunner:
 
     def _log(self, event: str, **fields: object) -> None:
         if self._event_log is not None:
+            if self._thread_id is not None:
+                fields.setdefault("thread_id", self._thread_id)
             self._event_log.write(event, **fields)
 
     def _session_id_from_output(self, command: str, output: str) -> str:

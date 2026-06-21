@@ -22,10 +22,12 @@ def main() -> int:
     body = _required(payload, "body")
     max_messages = int(payload.get("max_messages") or 4)
     source_session_id = str(payload.get("source_session_id") or "").strip()
+    thread_id = source_session_id or str(payload.get("thread_id") or "").strip() or "adhoc"
     state_dir = _state_dir(repo_root)
     event_log = EventLog(_log_path(repo_root, state_dir))
     event_log.write(
         "bridge_request",
+        thread_id=thread_id,
         from_agent=from_agent,
         to_agent=to_agent,
         source_session_id=source_session_id,
@@ -38,7 +40,13 @@ def main() -> int:
         if target_session_id:
             sessions[to_agent] = target_session_id
 
-    runner = HermesRunner(org, cwd=repo_root, sessions=sessions, event_log=event_log)
+    runner = HermesRunner(
+        org,
+        cwd=repo_root,
+        sessions=sessions,
+        event_log=event_log,
+        thread_id=thread_id,
+    )
     result = runner.chat(
         to_agent,
         f"{from_agent} sent you this message:\n\n{body}",

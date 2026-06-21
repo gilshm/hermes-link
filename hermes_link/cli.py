@@ -4,6 +4,7 @@ import argparse
 import json
 import time
 from pathlib import Path
+from uuid import uuid4
 
 from hermes_link.hermes_runner import HermesRunner
 from hermes_link.log import EventLog, default_log_path, format_event, iter_events
@@ -28,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     log.add_argument("--path", type=Path, default=default_log_path(REPO_ROOT))
     log.add_argument("--watch", "-w", action="store_true")
     log.add_argument("--interval", type=float, default=1.0)
+    log.add_argument("--color", choices=["auto", "always", "never"], default="auto")
 
     args = parser.parse_args(argv)
     if args.command == "chat":
@@ -36,31 +38,41 @@ def main(argv: list[str] | None = None) -> int:
             cwd=REPO_ROOT,
             timeout=args.timeout,
             event_log=EventLog(default_log_path(REPO_ROOT)),
+            thread_id=f"cli-{uuid4().hex[:8]}",
         ).chat(args.agent, args.prompt, max_messages=args.max_messages)
         for message in result.transcript[1:]:
             print(f"{message.sender} -> {message.recipient}: {message.body}")
         print(result.final_response)
         return 0
     if args.command == "log":
+        color = _use_color(args.color)
         if args.watch:
-            return _watch_log(args.path, interval=args.interval)
+            return _watch_log(args.path, interval=args.interval, color=color)
         for event in iter_events(args.path):
-            print(format_event(event))
+            print(format_event(event, color=color))
         return 0
 
     raise AssertionError(f"unhandled command: {args.command}")
 
 
-def _watch_log(path: Path, *, interval: float) -> int:
+def _watch_log(path: Path, *, interval: float, color: bool) -> int:
     seen = 0
     while True:
         if path.exists():
             lines = path.read_text(encoding="utf-8").splitlines()
             for line in lines[seen:]:
                 if line.strip():
-                    print(format_event(json.loads(line)), flush=True)
+                    print(format_event(json.loads(line), color=color), flush=True)
             seen = len(lines)
         time.sleep(interval)
+
+
+def _use_color(mode: str) -> bool:
+    if mode == "always":
+        return True
+    if mode == "never":
+        return False
+    return __import__("sys").stdout.isatty()
 
 
 if __name__ == "__main__":

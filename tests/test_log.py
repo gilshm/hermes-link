@@ -11,13 +11,36 @@ class LogTests(unittest.TestCase):
             path = Path(tmpdir) / "events.jsonl"
             log = EventLog(path)
 
-            log.write("message", from_agent="agent_a", to_agent="agent_b", body="hello")
+            log.write(
+                "message",
+                thread_id="thread-123456789",
+                from_agent="agent_a",
+                to_agent="agent_b",
+                body="hello",
+            )
 
             events = list(iter_events(path))
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["event"], "message")
-        self.assertEqual(format_event(events[0]), "agent_a -> agent_b: hello")
+        formatted = format_event(events[0])
+        self.assertIn("[ad-123456789]", formatted)
+        self.assertIn("├─ agent_a -> agent_b: hello", formatted)
+
+    def test_format_event_can_colorize(self) -> None:
+        formatted = format_event(
+            {
+                "event": "message",
+                "ts": 1,
+                "thread_id": "thread",
+                "from_agent": "agent_a",
+                "to_agent": "agent_b",
+                "body": "hello",
+            },
+            color=True,
+        )
+
+        self.assertIn("\033[", formatted)
 
 
 if __name__ == "__main__":

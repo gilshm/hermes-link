@@ -12,14 +12,26 @@ class CliTests(unittest.TestCase):
     def test_log_command_prints_formatted_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "events.jsonl"
-            EventLog(path).write("message", from_agent="agent_a", to_agent="agent_b", body="hello")
+            EventLog(path).write("message", thread_id="thread-1", from_agent="agent_a", to_agent="agent_b", body="hello")
             output = io.StringIO()
 
             with mock.patch("sys.stdout", output):
                 exit_code = main(["log", "--path", str(path)])
 
         self.assertEqual(exit_code, 0)
-        self.assertIn("agent_a -> agent_b: hello", output.getvalue())
+        self.assertIn("[thread-1] ├─ agent_a -> agent_b: hello", output.getvalue())
+
+    def test_log_command_can_force_color(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            EventLog(path).write("message", thread_id="thread-1", from_agent="agent_a", to_agent="agent_b", body="hello")
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(["log", "--path", str(path), "--color", "always"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("\033[", output.getvalue())
 
 
 if __name__ == "__main__":

@@ -76,7 +76,20 @@ Watch messages live:
 bin/hermes_link log --watch
 ```
 
+Force color output:
+
+```bash
+bin/hermes_link log --watch --color always
+```
+
 The default log file is `.hermes-link/events.jsonl`.
+Log output includes timestamps and a compact thread marker so related messages line up:
+
+```text
+2026-06-21 22:00:00 [abc123] ┌─ bridge agent_a -> agent_b: hi
+2026-06-21 22:00:01 [abc123] ├─ agent_b -> agent_a: hello
+2026-06-21 22:00:01 [abc123] └─ agent_b final: hello
+```
 
 ## Test
 
