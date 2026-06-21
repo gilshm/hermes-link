@@ -82,6 +82,33 @@ class HermesRunner:
             turns.append(turn)
             directive = parse_send_directive(turn.response)
             if directive is None:
+                if current_agent != agent and len(turns) < limit:
+                    transcript.append(Message(current_agent, agent, turn.response))
+                    self._log(
+                        "message",
+                        from_agent=current_agent,
+                        to_agent=agent,
+                        from_session_id=turn.session_id,
+                        to_session_id=self._sessions.get(agent),
+                        body=turn.response,
+                    )
+                    final_prompt = self._agent_prompt(
+                        "Original user request:\n"
+                        f"{prompt}\n\n"
+                        f"{current_agent} replied to you:\n\n{turn.response}\n\n"
+                        "Answer the original user directly now. Do not output SEND. "
+                        "If the original request required an exact final marker, include it.",
+                        allow_tools=False,
+                    )
+                    final_turn = self._run_agent(agent, final_prompt)
+                    turns.append(final_turn)
+                    self._log(
+                        "final",
+                        agent=agent,
+                        session_id=final_turn.session_id,
+                        body=final_turn.response,
+                    )
+                    return ChatResult(transcript, turns, final_turn.response)
                 self._log(
                     "final",
                     agent=current_agent,

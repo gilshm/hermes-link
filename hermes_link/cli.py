@@ -57,7 +57,14 @@ def main(argv: list[str] | None = None) -> int:
         ).chat(args.agent, args.prompt, max_messages=args.max_messages)
         for message in result.transcript[1:]:
             print(f"{message.sender} -> {message.recipient}: {message.body}")
-        print(result.final_response)
+        if len(result.transcript) > 1 and result.turns:
+            if result.turns[-1].agent == result.transcript[0].recipient:
+                print(result.final_response)
+            else:
+                previous = result.transcript[-1]
+                print(f"{result.turns[-1].agent} -> {previous.sender}: {result.final_response}")
+        else:
+            print(result.final_response)
         return 0
     if args.command == "log":
         color = _use_color(args.color)

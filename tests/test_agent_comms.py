@@ -83,6 +83,56 @@ class AgentCommsTests(unittest.TestCase):
         self.assertIn("-r", calls[2])
         self.assertEqual(calls[2][calls[2].index("-r") + 1], "session-a")
 
+    def test_runner_returns_recipient_reply_to_origin_agent_for_final_answer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  agent_a:",
+                        "    command: agent_a",
+                        "  agent_b:",
+                        "    command: agent_b",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 4",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            calls: list[list[str]] = []
+            outputs = [
+                "session_id: session-a\nSEND agent_b: ping",
+                "session_id: session-b\npong",
+                "session_id: session-a\nfinal to user",
+            ]
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                calls.append(args)
+                return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
+
+            with mock.patch("subprocess.run", side_effect=fake_run):
+                result = HermesRunner(org, cwd=root).chat("agent_a", "start")
+
+        self.assertEqual(
+            result.transcript,
+            [
+                Message("user", "agent_a", "start"),
+                Message("agent_a", "agent_b", "ping"),
+                Message("agent_b", "agent_a", "pong"),
+            ],
+        )
+        self.assertEqual(result.final_response, "final to user")
+        self.assertEqual(calls[2][0], "agent_a")
+        self.assertIn("-r", calls[2])
+        self.assertEqual(calls[2][calls[2].index("-r") + 1], "session-a")
+
     def test_runner_stops_when_directive_targets_stop_recipient(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

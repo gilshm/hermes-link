@@ -5,7 +5,9 @@ from pathlib import Path
 from unittest import mock
 
 from hermes_link.cli import main
+from hermes_link.hermes_runner import AgentTurn, ChatResult
 from hermes_link.log import EventLog
+from hermes_link.message import Message
 
 
 class CliTests(unittest.TestCase):
@@ -44,6 +46,33 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("source-a -> agent_b: session-b", output.getvalue())
+
+    def test_chat_command_labels_final_routed_reply(self) -> None:
+        output = io.StringIO()
+        result = ChatResult(
+            transcript=[
+                Message("user", "agent_a", "start"),
+                Message("agent_a", "agent_b", "ping"),
+            ],
+            turns=[
+                AgentTurn("agent_a", "session-a", "SEND agent_b: ping"),
+                AgentTurn("agent_b", "session-b", "pong"),
+            ],
+            final_response="pong",
+        )
+
+        with (
+            mock.patch("sys.stdout", output),
+            mock.patch("hermes_link.cli.load_org"),
+            mock.patch("hermes_link.cli.EventLog"),
+            mock.patch("hermes_link.cli.HermesRunner") as runner,
+        ):
+            runner.return_value.chat.return_value = result
+            exit_code = main(["chat", "agent_a", "start"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("agent_a -> agent_b: ping", output.getvalue())
+        self.assertIn("agent_b -> agent_a: pong", output.getvalue())
 
     def test_org_validate_command_reports_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
