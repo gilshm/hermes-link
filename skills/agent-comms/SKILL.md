@@ -5,7 +5,8 @@ description: Use this skill when a Hermes agent should send messages to another 
 
 # Agent Communications
 
-You can ask Hermes Link to deliver a message to another agent in the org.
+Hermes Link can deliver messages to another agent in the org while preserving
+that agent's Hermes session for the routed conversation.
 
 Use the Hermes Link org directory to decide who to contact. Contact another
 agent when their expertise is a better fit for part of the user's request, when
@@ -34,6 +35,8 @@ Rules:
 
 - Use only agent ids that exist in the org.
 - Choose the recipient based on the expertise listed in the org directory.
+- You may also use configured topics such as `@review` when the org directory
+  lists them.
 - Put the full message after the colon.
 - Do not wrap the directive in Markdown.
 - If you are done and want to answer the user, do not use `SEND`; answer normally.

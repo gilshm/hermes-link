@@ -1,70 +1,134 @@
 # Hermes Link
 
-Hermes Link is currently a minimal agent-to-agent message testbed.
+Hermes Link lets independent Hermes agents communicate with each other while
+keeping their own Hermes identities, sessions, and responsibilities.
 
-The first supported behavior is intentionally small:
+The core flow is:
 
-1. `agent_a` sends a message to `agent_b`.
-2. `agent_b` sends one response back to `agent_a`.
-3. Hermes Link keeps one Hermes session per agent while mediating the exchange.
+1. A user talks to an agent, usually `agent_a`.
+2. That agent decides whether another configured agent should help.
+3. Hermes Link delivers the message to the target agent and preserves the target
+   agent's session for future messages in the same routed thread.
+4. Replies are routed back through the originating agent so it can answer the
+   user with the delegated context included.
 
-There is no plugin bridge, persistence, retry logic, or background service in this rewrite.
+Agents are declared in [config/org.yaml](config/org.yaml). Each entry defines the
+Hermes command to run and the agent's expertise, which is shown to agents so they
+can choose the right peer instead of guessing from ids.
 
-## Run
+## Install
 
-Install the local wrapper and copy the skill into org profiles:
+Install the local CLI wrapper, communication skill, and plugin into Hermes
+profiles:
 
 ```bash
 python3 install.py
 ```
 
-This installs:
+The installer discovers profiles under `~/.hermes/profiles` and asks where to
+install. Press Enter to install into all discovered profiles. In non-interactive
+runs, it defaults to all profiles.
 
-- `bin/hermes_link`: a repo-local wrapper for `python3 -m hermes_link.cli`.
-- `skills/agent-comms`: copied into selected Hermes profiles.
-- `hermes-link` plugin: copied into selected Hermes profiles and enabled.
+Installed pieces:
 
-The installer discovers profiles under `~/.hermes/profiles` and asks where to install
-the skill. Press Enter to install into all discovered profiles. In non-interactive
-runs, it defaults to all.
+- `bin/hermes_link`: repo-local wrapper for `python -m hermes_link.cli`.
+- `skills/agent-comms`: instructions copied into selected Hermes profiles.
+- `hermes-link` plugin: `route_message` tool copied into selected Hermes
+  profiles and enabled.
 
-Desktop/TUI agents use the installed `route_message` plugin tool. The mediated CLI
-entry point is `bin/hermes_link chat ...`.
-
-In-memory demo:
+Useful installer flags:
 
 ```bash
-python -m hermes_link.demo
+python3 install.py --all
+python3 install.py --profile agent_a --profile agent_b
+python3 install.py --skip-wrapper
+python3 install.py --skip-skills
+python3 install.py --skip-plugin
 ```
 
-Expected output:
-
-```text
-agent_a -> agent_b: ping
-agent_b -> agent_a: pong
-```
-
-Talk to a real org agent through Hermes Link:
+Validate the org and local install inputs:
 
 ```bash
-bin/hermes_link chat agent_a "Ask agent_b for one short reply, then answer me."
+bin/hermes_link org validate
 ```
 
-Hermes Link loads [config/org.yaml](config/org.yaml), injects the
-[agent-comms skill](skills/agent-comms/SKILL.md), and routes any response shaped like:
+## Configure The Org
+
+`config/org.yaml` is the directory agents see when deciding who to contact:
+
+```yaml
+agents:
+  agent_a:
+    command: agent_a
+    expertise: >
+      General coordinator and first-contact agent.
+  agent_b:
+    command: agent_b
+    expertise: >
+      Second-opinion and review agent.
+
+topics:
+  review:
+    default: agent_b
+    agents:
+      - agent_b
+
+skill: skills/agent-comms/SKILL.md
+max_messages: 10
+```
+
+Agents can route directly to another agent id, or to a topic such as `@review`.
+Topics resolve to their configured default agent.
+
+## How Agents Route
+
+Desktop and TUI agents use the installed `route_message` plugin tool when it is
+available. The plugin calls back into this repository, runs the target Hermes
+profile, and returns a transcript to the calling agent.
+
+The skill also documents a text fallback:
 
 ```text
 SEND agent_b: message
+SEND @review: message
 ```
 
-The skill teaches agents this convention. The Python runner performs the actual delivery
-and resumes the same Hermes session for each agent.
+The Python runner parses these `SEND` directives, delivers messages, and resumes
+the same Hermes session for each participating agent. If a routed recipient
+answers normally instead of sending another `SEND`, Hermes Link records that
+reply and resumes the originating agent so it can answer the user.
 
-`config/org.yaml` also describes each agent's expertise. Hermes Link includes this
-directory in routed prompts so agents have a reason to contact the right peer instead
-of guessing from ids alone.
+## Use The CLI
 
-Show the message log:
+Talk to an org agent through Hermes Link:
+
+```bash
+bin/hermes_link chat agent_a "Ask agent_b for one short review, then answer me."
+```
+
+Show configured agents and local install state:
+
+```bash
+bin/hermes_link agents
+```
+
+Show persisted source-session to target-session mappings:
+
+```bash
+bin/hermes_link sessions
+```
+
+Validate the org config:
+
+```bash
+bin/hermes_link org validate
+```
+
+## Logs
+
+Hermes Link writes routed events to `.hermes-link/events.jsonl`.
+
+Show the log:
 
 ```bash
 bin/hermes_link log
@@ -82,33 +146,41 @@ Force color output:
 bin/hermes_link log --watch --color always
 ```
 
-The default log file is `.hermes-link/events.jsonl`.
-Log output includes timestamps and a compact thread marker so related messages line up:
+Log output includes timestamps, thread ids, and branch markers so related
+messages line up:
 
 ```text
 2026-06-21 22:00:00 [abc123] ┌─ bridge agent_a -> agent_b: hi
 2026-06-21 22:00:01 [abc123] ├─ agent_b -> agent_a: hello
-2026-06-21 22:00:01 [abc123] └─ agent_b final: hello
+2026-06-21 22:00:02 [abc123] └─ agent_a final: thanks
 ```
 
 ## Test
+
+Run the offline suite:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Live Hermes profile smoke test:
+Run the live Hermes profile tests:
 
 ```bash
 HERMES_LINK_RUN_REAL_AGENTS=1 python -m unittest tests.test_real_hermes_agents -v
 ```
 
+The live tests require working `agent_a` and `agent_b` Hermes commands on `PATH`
+with the plugin and skill installed.
+
 ## Code Shape
 
-- `hermes_link.message.Message`: immutable message object.
-- `hermes_link.agent.Agent`: small named handler wrapper.
-- `hermes_link.runtime.Runtime`: synchronous in-memory delivery loop.
 - `hermes_link.hermes_runner.HermesRunner`: real Hermes profile mediator.
-- `config/org.yaml`: available org agents.
-- `skills/agent-comms/SKILL.md`: routing convention shown to agents.
-- `hermes_link.demo`: executable round-trip demo.
+- `hermes_link.bridge_runner`: plugin entrypoint for `route_message`.
+- `hermes_link.org`: org config and topic resolution.
+- `hermes_link.session_map.SessionMap`: source-session to target-session reuse.
+- `hermes_link.log`: JSONL event log and formatted watcher output.
+- `hermes_link.validation`: `org validate` checks.
+- `skills/agent-comms/SKILL.md`: routing instructions shown to agents.
+- `.hermes/plugins/hermes-link`: Hermes plugin source.
+- `install.py`: profile discovery and install/enable flow.
+- `hermes_link.demo`: in-memory round-trip demo for development.

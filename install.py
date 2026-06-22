@@ -16,7 +16,7 @@ DEFAULT_HERMES_HOME = Path.home() / ".hermes"
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Install the minimal Hermes Link testbed")
+    parser = argparse.ArgumentParser(description="Install Hermes Link agent communication support")
     parser.add_argument("--org", type=Path, default=DEFAULT_ORG)
     parser.add_argument("--hermes-home", type=Path, default=DEFAULT_HERMES_HOME)
     parser.add_argument(
