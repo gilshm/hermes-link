@@ -28,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     chat.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
     chat.add_argument("--max-messages", type=int, default=None)
     chat.add_argument("--timeout", type=int, default=120)
+    chat.add_argument("--thread-id", default=None, help="Trace id to use for this routed conversation")
+    chat.add_argument("--log-path", type=Path, default=default_log_path(REPO_ROOT))
 
     log = subparsers.add_parser("log", help="Show Hermes Link message log")
     log.add_argument("--path", type=Path, default=default_log_path(REPO_ROOT))
@@ -48,6 +50,14 @@ def main(argv: list[str] | None = None) -> int:
 
     sessions = subparsers.add_parser("sessions", help="Show Hermes Link session mappings")
     sessions.add_argument("--path", type=Path, default=REPO_ROOT / ".hermes-link" / "session-map.json")
+    sessions.add_argument("--thread", help="Show sessions observed in one logged thread")
+    sessions.add_argument("--log-path", type=Path, default=default_log_path(REPO_ROOT))
+
+    cleanup = subparsers.add_parser("cleanup", help="Clean Hermes Link state files")
+    cleanup.add_argument("--state-dir", type=Path, default=REPO_ROOT / ".hermes-link")
+    cleanup.add_argument("--log-path", type=Path, default=default_log_path(REPO_ROOT))
+    cleanup.add_argument("--lock-older-than-seconds", type=float, default=24 * 60 * 60)
+    cleanup.add_argument("--max-log-bytes", type=int, default=None)
 
     doctor = subparsers.add_parser("doctor", help="Check Hermes Link config and install state")
     doctor.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
@@ -64,13 +74,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     if args.command == "chat":
+        thread_id = args.thread_id or f"cli-{uuid4().hex[:8]}"
         result = HermesRunner(
             load_org(args.org),
             cwd=REPO_ROOT,
             timeout=args.timeout,
-            event_log=EventLog(default_log_path(REPO_ROOT)),
-            thread_id=f"cli-{uuid4().hex[:8]}",
+            event_log=EventLog(args.log_path),
+            thread_id=thread_id,
         ).chat(args.agent, args.prompt, max_messages=args.max_messages)
+        print(f"thread_id: {thread_id}")
         for message in result.transcript[1:]:
             print(f"{message.sender} -> {message.recipient}: {message.body}")
         if len(result.transcript) > 1 and result.turns:
@@ -123,12 +135,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{'OK' if check.ok else 'FAIL'} {check.name}: {check.detail}")
         return 0 if all(check.ok for check in checks) else 1
     if args.command == "sessions":
+        if args.thread:
+            print(_format_thread_sessions(trace_events(args.log_path, args.thread), thread_id=args.thread))
+            return 0
         entries = SessionMap(args.path).entries()
         if not entries:
             print("No session mappings.")
             return 0
         for source_session_id, agent, target_session_id in entries:
             print(f"{source_session_id} -> {agent}: {target_session_id}")
+        return 0
+    if args.command == "cleanup":
+        removed_locks = _cleanup_locks(args.state_dir / "locks", older_than_seconds=args.lock_older_than_seconds)
+        rotated_log = _rotate_log_if_needed(args.log_path, max_bytes=args.max_log_bytes)
+        print(f"removed locks: {removed_locks}")
+        if rotated_log is not None:
+            print(f"rotated log: {rotated_log}")
         return 0
     if args.command == "org" and args.org_command == "validate":
         errors = validate_org(args.org, repo_root=REPO_ROOT)
@@ -143,6 +165,45 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     raise AssertionError(f"unhandled command: {args.command}")
+
+
+def _format_thread_sessions(events: list[dict], *, thread_id: str) -> str:
+    sessions: set[tuple[str, str]] = set()
+    for event in events:
+        if event.get("from_agent") and event.get("from_session_id"):
+            sessions.add((str(event["from_agent"]), str(event["from_session_id"])))
+        if event.get("to_agent") and event.get("to_session_id"):
+            sessions.add((str(event["to_agent"]), str(event["to_session_id"])))
+        if event.get("agent") and event.get("session_id"):
+            sessions.add((str(event["agent"]), str(event["session_id"])))
+    if not sessions:
+        return f"No sessions found for thread: {thread_id}"
+    lines = [f"Sessions for thread {thread_id}"]
+    for agent, session_id in sorted(sessions):
+        lines.append(f"{agent}: {session_id}")
+    return "\n".join(lines)
+
+
+def _cleanup_locks(path: Path, *, older_than_seconds: float) -> int:
+    if not path.exists():
+        return 0
+    threshold = time.time() - older_than_seconds
+    removed = 0
+    for lock in path.glob("*.lock"):
+        if lock.stat().st_mtime <= threshold:
+            lock.unlink()
+            removed += 1
+    return removed
+
+
+def _rotate_log_if_needed(path: Path, *, max_bytes: int | None) -> Path | None:
+    if max_bytes is None or max_bytes < 1 or not path.exists() or path.stat().st_size <= max_bytes:
+        return None
+    rotated = path.with_name(f"{path.name}.1")
+    if rotated.exists():
+        rotated.unlink()
+    path.rename(rotated)
+    return rotated
 
 
 def _format_org_graph(org: OrgConfig) -> str:

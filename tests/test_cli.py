@@ -1,5 +1,7 @@
 import io
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -63,6 +65,31 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("source-a -> hl_advisor: session-b", output.getvalue())
 
+    def test_sessions_command_can_filter_by_thread_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            log = EventLog(path)
+            log.write(
+                "message",
+                thread_id="thread-a",
+                from_agent="hl_ceo",
+                to_agent="hl_advisor",
+                from_session_id="session-ceo",
+                to_session_id="session-advisor",
+                body="hello",
+            )
+            log.write("final", thread_id="thread-b", agent="hl_cto", session_id="ignore", body="ignore")
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(["sessions", "--thread", "thread-a", "--log-path", str(path)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Sessions for thread thread-a", output.getvalue())
+        self.assertIn("hl_ceo: session-ceo", output.getvalue())
+        self.assertIn("hl_advisor: session-advisor", output.getvalue())
+        self.assertNotIn("ignore", output.getvalue())
+
     def test_chat_command_labels_final_routed_reply(self) -> None:
         output = io.StringIO()
         result = ChatResult(
@@ -76,19 +103,59 @@ class CliTests(unittest.TestCase):
             ],
             final_response="pong",
         )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "events.jsonl"
 
-        with (
-            mock.patch("sys.stdout", output),
-            mock.patch("hermes_link.cli.load_org"),
-            mock.patch("hermes_link.cli.EventLog"),
-            mock.patch("hermes_link.cli.HermesRunner") as runner,
-        ):
-            runner.return_value.chat.return_value = result
-            exit_code = main(["chat", "hl_ceo", "start"])
+            with (
+                mock.patch("sys.stdout", output),
+                mock.patch("hermes_link.cli.load_org"),
+                mock.patch("hermes_link.cli.HermesRunner") as runner,
+            ):
+                runner.return_value.chat.return_value = result
+                exit_code = main(["chat", "hl_ceo", "start", "--thread-id", "thread-test", "--log-path", str(log_path)])
 
         self.assertEqual(exit_code, 0)
+        self.assertIn("thread_id: thread-test", output.getvalue())
         self.assertIn("hl_ceo -> hl_advisor: ping", output.getvalue())
         self.assertIn("hl_advisor -> hl_ceo: pong", output.getvalue())
+
+    def test_cleanup_removes_old_locks_and_rotates_large_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "state"
+            locks = state_dir / "locks"
+            locks.mkdir(parents=True)
+            old_lock = locks / "old.lock"
+            fresh_lock = locks / "fresh.lock"
+            old_lock.write_text("", encoding="utf-8")
+            fresh_lock.write_text("", encoding="utf-8")
+            old_time = time.time() - 10
+            os.utime(old_lock, (old_time, old_time))
+            log_path = state_dir / "events.jsonl"
+            log_path.write_text("x" * 20, encoding="utf-8")
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(
+                    [
+                        "cleanup",
+                        "--state-dir",
+                        str(state_dir),
+                        "--log-path",
+                        str(log_path),
+                        "--lock-older-than-seconds",
+                        "5",
+                        "--max-log-bytes",
+                        "10",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(old_lock.exists())
+            self.assertTrue(fresh_lock.exists())
+            self.assertFalse(log_path.exists())
+            self.assertTrue((state_dir / "events.jsonl.1").exists())
+            self.assertIn("removed locks: 1", output.getvalue())
+            self.assertIn("rotated log:", output.getvalue())
 
     def test_org_validate_command_reports_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

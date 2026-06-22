@@ -156,6 +156,7 @@ class RealHermesAgentTests(unittest.TestCase):
                 "reply_marker": "HERMES_PARALLEL_EXEC_REPLY",
                 "done_marker": "HERMES_PARALLEL_EXEC_DONE",
                 "run_id": f"HERMES_PARALLEL_EXEC_{uuid.uuid4().hex}",
+                "thread_id": f"live-exec-{uuid.uuid4().hex[:8]}",
             },
             {
                 "sender": "hl_cto",
@@ -163,6 +164,7 @@ class RealHermesAgentTests(unittest.TestCase):
                 "reply_marker": "HERMES_PARALLEL_ENG_REPLY",
                 "done_marker": "HERMES_PARALLEL_ENG_DONE",
                 "run_id": f"HERMES_PARALLEL_ENG_{uuid.uuid4().hex}",
+                "thread_id": f"live-eng-{uuid.uuid4().hex[:8]}",
             },
             {
                 "sender": "hl_product_manager",
@@ -170,10 +172,11 @@ class RealHermesAgentTests(unittest.TestCase):
                 "reply_marker": "HERMES_PARALLEL_PRODUCT_REPLY",
                 "done_marker": "HERMES_PARALLEL_PRODUCT_DONE",
                 "run_id": f"HERMES_PARALLEL_PRODUCT_{uuid.uuid4().hex}",
+                "thread_id": f"live-product-{uuid.uuid4().hex[:8]}",
             },
         ]
 
-        def run_conversation(conversation: dict[str, str]) -> subprocess.CompletedProcess[str]:
+        def run_conversation(conversation: dict[str, str], log_path: Path) -> subprocess.CompletedProcess[str]:
             return subprocess.run(
                 [
                     sys.executable,
@@ -189,6 +192,10 @@ class RealHermesAgentTests(unittest.TestCase):
                     "4",
                     "--timeout",
                     str(TIMEOUT_SECONDS),
+                    "--thread-id",
+                    conversation["thread_id"],
+                    "--log-path",
+                    str(log_path),
                 ],
                 check=False,
                 capture_output=True,
@@ -196,9 +203,13 @@ class RealHermesAgentTests(unittest.TestCase):
                 timeout=TIMEOUT_SECONDS * 5,
             )
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(conversations)) as executor:
-            futures = [executor.submit(run_conversation, conversation) for conversation in conversations]
-            completed_runs = [future.result(timeout=TIMEOUT_SECONDS * 6) for future in futures]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "parallel-events.jsonl"
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(conversations)) as executor:
+                futures = [executor.submit(run_conversation, conversation, log_path) for conversation in conversations]
+                completed_runs = [future.result(timeout=TIMEOUT_SECONDS * 6) for future in futures]
+
+            _assert_parallel_traces_are_isolated(conversations, log_path)
 
         all_run_ids = {conversation["run_id"] for conversation in conversations}
         for conversation, completed in zip(conversations, completed_runs):
@@ -427,6 +438,64 @@ def _run_hl_ceo_with_plugin(prompt: str) -> subprocess.CompletedProcess[str]:
             f"stderr:\n{completed.stderr}"
         )
     return completed
+
+
+def _assert_parallel_traces_are_isolated(conversations: list[dict[str, str]], log_path: Path) -> None:
+    all_run_ids = {conversation["run_id"] for conversation in conversations}
+    for conversation in conversations:
+        trace = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "hermes_link.cli",
+                "trace",
+                conversation["thread_id"],
+                "--path",
+                str(log_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT_SECONDS,
+        )
+        if trace.returncode != 0:
+            raise AssertionError(
+                f"trace command failed with exit code {trace.returncode}\n"
+                f"stdout:\n{trace.stdout}\n"
+                f"stderr:\n{trace.stderr}"
+            )
+        sessions = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "hermes_link.cli",
+                "sessions",
+                "--thread",
+                conversation["thread_id"],
+                "--log-path",
+                str(log_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT_SECONDS,
+        )
+        if sessions.returncode != 0:
+            raise AssertionError(
+                f"sessions command failed with exit code {sessions.returncode}\n"
+                f"stdout:\n{sessions.stdout}\n"
+                f"stderr:\n{sessions.stderr}"
+            )
+        if conversation["run_id"] not in trace.stdout:
+            raise AssertionError(f"trace did not include run id {conversation['run_id']}:\n{trace.stdout}")
+        for label, output in (("trace", trace.stdout), ("sessions", sessions.stdout)):
+            if conversation["sender"] not in output:
+                raise AssertionError(f"{label} did not include sender {conversation['sender']}:\n{output}")
+            if conversation["recipient"] not in output:
+                raise AssertionError(f"{label} did not include recipient {conversation['recipient']}:\n{output}")
+            for other_run_id in all_run_ids - {conversation["run_id"]}:
+                if other_run_id in output:
+                    raise AssertionError(f"{label} leaked run id {other_run_id} into {conversation['thread_id']}:\n{output}")
 
 
 def _write_policy_block_org(root: Path) -> Path:

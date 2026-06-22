@@ -167,6 +167,9 @@ Talk to an org agent through Hermes Link:
 bin/hermes_link chat hl_ceo "Ask hl_advisor for one short review, then answer me."
 ```
 
+`chat` prints a `thread_id` at the top of the output. Use that id to inspect
+the trace or sessions for that routed conversation.
+
 Show configured agents and local install state:
 
 ```bash
@@ -183,6 +186,12 @@ Show persisted source-session to target-session mappings:
 
 ```bash
 bin/hermes_link sessions
+```
+
+Show sessions observed in one logged thread:
+
+```bash
+bin/hermes_link sessions --thread cli-1234abcd
 ```
 
 Validate the org config:
@@ -224,6 +233,12 @@ Force color output:
 
 ```bash
 bin/hermes_link log --watch --color always
+```
+
+Clean stale lock files and rotate an oversized message log:
+
+```bash
+bin/hermes_link cleanup --lock-older-than-seconds 86400 --max-log-bytes 10485760
 ```
 
 Log output includes timestamps, thread ids, and branch markers so related
