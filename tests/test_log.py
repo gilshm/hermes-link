@@ -66,6 +66,41 @@ class LogTests(unittest.TestCase):
         self.assertIn("bridge hl_ceo -> hl_advisor: start", formatted)
         self.assertIn("hl_advisor(12345678) -> hl_ceo(87654321): reply", formatted)
 
+    def test_trace_formats_scatter_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            log = EventLog(path)
+            log.write("scatter_start", thread_id="thread-a", from_agent="hl_cto", recipients=["hl_backend_engineer"])
+            log.write(
+                "scatter_message",
+                thread_id="thread-a",
+                from_agent="hl_cto",
+                to_agent="hl_backend_engineer",
+                body="status",
+            )
+            log.write(
+                "scatter_result",
+                thread_id="thread-a",
+                from_agent="hl_backend_engineer",
+                to_agent="hl_cto",
+                from_session_id="backend-session",
+                body="ready",
+            )
+            log.write(
+                "scatter_error",
+                thread_id="thread-a",
+                from_agent="hl_cto",
+                to_agent="hl_frontend_engineer",
+                reason="timeout",
+            )
+
+            formatted = format_trace(trace_events(path, "thread-a"), thread_id="thread-a")
+
+        self.assertIn("scatter hl_cto -> [hl_backend_engineer]", formatted)
+        self.assertIn("scatter hl_cto -> hl_backend_engineer: status", formatted)
+        self.assertIn("gather hl_backend_engineer", formatted)
+        self.assertIn("scatter failed hl_cto -> hl_frontend_engineer: timeout", formatted)
+
 
 if __name__ == "__main__":
     unittest.main()

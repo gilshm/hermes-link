@@ -36,6 +36,7 @@ class OrgConfig:
     routing: RoutingPolicy
     skill_path: Path
     max_messages: int
+    scatter_timeout: int
 
     def resolve_agent(self, target: str) -> str:
         normalized = target.removeprefix("@")
@@ -69,6 +70,9 @@ def load_org(path: Path) -> OrgConfig:
     max_messages = int(raw.get("max_messages", 10))
     if max_messages < 1:
         raise ValueError("max_messages must be at least 1")
+    scatter_timeout = int(raw.get("scatter_timeout", 120))
+    if scatter_timeout < 1:
+        raise ValueError("scatter_timeout must be at least 1")
 
     return OrgConfig(
         agents=agents,
@@ -76,6 +80,7 @@ def load_org(path: Path) -> OrgConfig:
         routing=routing,
         skill_path=(path.parent.parent / str(skill)).resolve(),
         max_messages=max_messages,
+        scatter_timeout=scatter_timeout,
     )
 
 

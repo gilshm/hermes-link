@@ -4,10 +4,11 @@ import fcntl
 import re
 import shutil
 import subprocess
+import concurrent.futures
 from dataclasses import dataclass
 from pathlib import Path
 
-from hermes_link.directive import parse_send_directive
+from hermes_link.directive import SendAllDirective, SendDirective, parse_send_directive
 from hermes_link.log import EventLog
 from hermes_link.message import Message
 from hermes_link.org import OrgConfig
@@ -34,6 +35,15 @@ class ChatResult:
 class RoutedSend:
     message: Message
     turn: AgentTurn
+
+
+@dataclass(frozen=True)
+class ScatterItem:
+    recipient: str
+    body: str
+    ok: bool
+    response: str
+    turn: AgentTurn | None = None
 
 
 class HermesRunner:
@@ -117,6 +127,22 @@ class HermesRunner:
                     body=turn.response,
                 )
                 return ChatResult(transcript, turns, turn.response)
+            if isinstance(directive, SendAllDirective):
+                scatter_items = self._run_scatter(current_agent, directive)
+                for item in scatter_items:
+                    transcript.append(Message(current_agent, item.recipient, item.body))
+                    if item.turn is not None:
+                        turns.append(item.turn)
+                current_prompt = self._agent_prompt(
+                    "Original user request:\n"
+                    f"{prompt}\n\n"
+                    "Scatter-gather results from your SEND_ALL request:\n\n"
+                    f"{_format_scatter_results(scatter_items)}\n\n"
+                    "Continue the conversation. Summarize successful replies and mention failures. "
+                    "Do not retry failed recipients unless explicitly necessary.",
+                    allow_tools=False,
+                )
+                continue
 
             recipient = self._resolve_agent(directive.recipient)
             if not self._org.can_route(current_agent, recipient):
@@ -161,6 +187,8 @@ class HermesRunner:
         directive = parse_send_directive(turn.response)
         if directive is None:
             raise RuntimeError(f"{agent} did not emit a SEND directive:\n{turn.response}")
+        if isinstance(directive, SendAllDirective):
+            raise RuntimeError(f"{agent} emitted SEND_ALL where one SEND directive was required:\n{turn.response}")
         recipient = self._resolve_agent(directive.recipient)
         if not self._org.can_route(agent, recipient):
             raise RuntimeError(_policy_denial(agent, recipient))
@@ -169,7 +197,7 @@ class HermesRunner:
             turn=turn,
         )
 
-    def _run_agent(self, agent: str, prompt: str) -> AgentTurn:
+    def _run_agent(self, agent: str, prompt: str, timeout: int | None = None) -> AgentTurn:
         command = self._org.agents[agent].command
         if shutil.which(command) is None:
             raise RuntimeError(f"agent command not found for {agent}: {command}")
@@ -184,7 +212,7 @@ class HermesRunner:
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=self._timeout,
+                timeout=timeout or self._timeout,
                 cwd=self._cwd,
             )
         if completed.returncode != 0:
@@ -197,6 +225,80 @@ class HermesRunner:
         session_id = self._session_id_from_output(command, completed.stdout)
         self._sessions[agent] = session_id
         return AgentTurn(agent=agent, session_id=session_id, response=_clean_response(completed.stdout))
+
+    def _run_scatter(self, sender: str, directive: SendAllDirective) -> list[ScatterItem]:
+        batch = []
+        for send in directive.sends:
+            recipient = self._resolve_agent(send.recipient)
+            batch.append(SendDirective(recipient=recipient, body=send.body))
+        self._log(
+            "scatter_start",
+            from_agent=sender,
+            recipients=[send.recipient for send in batch],
+        )
+        results: list[ScatterItem | None] = [None] * len(batch)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch)) as executor:
+            futures = {}
+            for index, send in enumerate(batch):
+                if not self._org.can_route(sender, send.recipient):
+                    denial = _policy_denial(sender, send.recipient)
+                    self._log(
+                        "scatter_error",
+                        from_agent=sender,
+                        to_agent=send.recipient,
+                        body=send.body,
+                        reason=denial,
+                    )
+                    results[index] = ScatterItem(send.recipient, send.body, False, denial)
+                    continue
+                self._log(
+                    "scatter_message",
+                    from_agent=sender,
+                    to_agent=send.recipient,
+                    to_session_id=self._sessions.get(send.recipient),
+                    body=send.body,
+                )
+                prompt = self._agent_prompt(
+                    f"{sender} sent you this scatter-gather message:\n\n{send.body}\n\n"
+                    "Answer normally. Do not output SEND unless you must delegate.",
+                    allow_tools=False,
+                )
+                futures[executor.submit(self._run_agent, send.recipient, prompt, self._org.scatter_timeout)] = (index, send)
+            for future in concurrent.futures.as_completed(futures):
+                index, send = futures[future]
+                try:
+                    turn = future.result()
+                except subprocess.TimeoutExpired as exc:
+                    response = f"Timed out after {exc.timeout} seconds."
+                    self._log(
+                        "scatter_error",
+                        from_agent=sender,
+                        to_agent=send.recipient,
+                        body=send.body,
+                        reason=response,
+                    )
+                    results[index] = ScatterItem(send.recipient, send.body, False, response)
+                except Exception as exc:
+                    response = str(exc)
+                    self._log(
+                        "scatter_error",
+                        from_agent=sender,
+                        to_agent=send.recipient,
+                        body=send.body,
+                        reason=response,
+                    )
+                    results[index] = ScatterItem(send.recipient, send.body, False, response)
+                else:
+                    self._log(
+                        "scatter_result",
+                        from_agent=send.recipient,
+                        to_agent=sender,
+                        from_session_id=turn.session_id,
+                        to_session_id=self._sessions.get(sender),
+                        body=turn.response,
+                    )
+                    results[index] = ScatterItem(send.recipient, send.body, True, turn.response, turn)
+        return [result for result in results if result is not None]
 
     def _log(self, event: str, **fields: object) -> None:
         if self._event_log is not None:
@@ -243,6 +345,10 @@ class HermesRunner:
                 "Do not call tools. Do not call route_message.\n"
                 "If you need to send the next message to another agent, output exactly:\n"
                 "SEND agent_id: message\n"
+                "If you need to contact multiple agents in parallel and wait for their replies, output exactly:\n"
+                "SEND_ALL:\n"
+                "- agent_id: message\n"
+                "- agent_id: message\n"
                 "If you are done, answer normally."
             )
         return (
@@ -302,6 +408,14 @@ def _clean_response(output: str) -> str:
 
 def _normalize_body(body: str) -> str:
     return " ".join(body.casefold().split())
+
+
+def _format_scatter_results(items: list[ScatterItem]) -> str:
+    lines = []
+    for item in items:
+        status = "replied" if item.ok else "failed"
+        lines.append(f"- {item.recipient} {status}: {item.response}")
+    return "\n".join(lines)
 
 
 class _AgentLock:

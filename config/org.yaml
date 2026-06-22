@@ -93,3 +93,4 @@ routing: flat
 
 skill: skills/agent-comms/SKILL.md
 max_messages: 12
+scatter_timeout: 120

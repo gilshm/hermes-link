@@ -62,6 +62,25 @@ def format_event(event: dict[str, Any], *, color: bool = False) -> str:
             f"{_paint(prefix, '90', color)} {_paint('┌─', '33', color)} {arrow}: "
             f"{event.get('body', '')}"
         )
+    if kind == "scatter_start":
+        recipients = ", ".join(event.get("recipients", []))
+        sender = _paint(f"scatter {event.get('from_agent', '?')} -> [{recipients}]", "35", color)
+        return f"{_paint(prefix, '90', color)} {_paint('┬─', '35', color)} {sender}"
+    if kind == "scatter_message":
+        arrow = _paint(f"scatter {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "35", color)
+        return (
+            f"{_paint(prefix, '90', color)} {_paint('├─', '35', color)} {arrow}: "
+            f"{event.get('body', '')}"
+        )
+    if kind == "scatter_result":
+        arrow = _paint(f"gather {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "32", color)
+        return (
+            f"{_paint(prefix, '90', color)} {_paint('├─', '32', color)} {arrow}: "
+            f"{event.get('body', '')}"
+        )
+    if kind == "scatter_error":
+        arrow = _paint(f"scatter failed {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
+        return f"{_paint(prefix, '90', color)} {_paint('!─', '31', color)} {arrow}: {event.get('reason', '')}"
     if kind == "blocked":
         arrow = _paint(f"blocked {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
         return f"{_paint(prefix, '90', color)} {_paint('!─', '31', color)} {arrow}: {event.get('reason', '')}"
@@ -117,6 +136,30 @@ def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) ->
             color,
         )
         return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+    if kind == "scatter_start":
+        recipients = ", ".join(event.get("recipients", []))
+        route = _paint(f"scatter {event.get('from_agent', '?')} -> [{recipients}]", "35", color)
+        return f"{timestamp} {connector} {route}"
+    if kind == "scatter_message":
+        to_session = _session_suffix(event.get("to_session_id"))
+        route = _paint(
+            f"scatter {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}{to_session}",
+            "35",
+            color,
+        )
+        return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+    if kind == "scatter_result":
+        from_session = _session_suffix(event.get("from_session_id"))
+        to_session = _session_suffix(event.get("to_session_id"))
+        route = _paint(
+            f"gather {event.get('from_agent', '?')}{from_session} -> {event.get('to_agent', '?')}{to_session}",
+            "32",
+            color,
+        )
+        return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+    if kind == "scatter_error":
+        route = _paint(f"scatter failed {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
+        return f"{timestamp} {connector} {route}: {event.get('reason', '')}"
     if kind == "final":
         agent = _paint(f"{event.get('agent', '?')} final{_session_suffix(event.get('session_id'))}", "32", color)
         return f"{timestamp} {connector} {agent}: {event.get('body', '')}"

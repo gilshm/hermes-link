@@ -116,6 +116,7 @@ topics:
 
 skill: skills/agent-comms/SKILL.md
 max_messages: 12
+scatter_timeout: 120
 routing: flat
 ```
 
@@ -153,6 +154,21 @@ The skill also documents a text fallback:
 SEND hl_advisor: message
 SEND @review: message
 ```
+
+Agents can also fan out to multiple independent recipients and wait for the
+available replies:
+
+```text
+SEND_ALL:
+- hl_backend_engineer: What's up?
+- hl_frontend_engineer: What's up?
+```
+
+Hermes Link executes `SEND_ALL` as scatter-gather: it dispatches allowed
+messages concurrently, gathers normal replies, marks blocked/error/timeout
+recipients as failed, and resumes the sender with a structured result list.
+Successful replies are preserved even if one recipient fails.
+`scatter_timeout` controls the per-recipient timeout in seconds.
 
 The Python runner parses these `SEND` directives, delivers messages, and resumes
 the same Hermes session for each participating agent. If a routed recipient

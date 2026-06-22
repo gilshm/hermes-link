@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from hermes_link.directive import SendDirective, parse_send_directive
+from hermes_link.directive import SendAllDirective, SendDirective, parse_send_directive
 from hermes_link.hermes_runner import HermesRunner
 from hermes_link.message import Message
 from hermes_link.org import load_org
@@ -24,6 +24,25 @@ class AgentCommsTests(unittest.TestCase):
         )
         self.assertIsNone(parse_send_directive("hello user"))
 
+    def test_parse_send_all_directive(self) -> None:
+        self.assertEqual(
+            parse_send_directive(
+                "\n".join(
+                    [
+                        "SEND_ALL:",
+                        "- hl_backend_engineer: API check",
+                        "- hl_frontend_engineer: UI check",
+                    ]
+                )
+            ),
+            SendAllDirective(
+                (
+                    SendDirective("hl_backend_engineer", "API check"),
+                    SendDirective("hl_frontend_engineer", "UI check"),
+                )
+            ),
+        )
+
     def test_load_org(self) -> None:
         org = load_org(Path("config/org.yaml"))
 
@@ -40,6 +59,7 @@ class AgentCommsTests(unittest.TestCase):
         self.assertEqual(org.resolve_agent("@review"), "hl_advisor")
         self.assertEqual(org.resolve_agent("@technical"), "hl_cto")
         self.assertEqual(org.skill_path.name, "SKILL.md")
+        self.assertEqual(org.scatter_timeout, 120)
 
     def test_runner_routes_send_directives_and_reuses_agent_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -574,6 +594,115 @@ class AgentCommsTests(unittest.TestCase):
         )
         self.assertEqual(result.final_response, "final answer to user")
         self.assertEqual(result.turns[-1].session_id, "ceo-session")
+
+    def test_runner_handles_send_all_scatter_gather(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND_ALL.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "  hl_frontend_engineer:",
+                        "    command: hl_frontend_engineer",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 3",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            outputs = {
+                "hl_cto": [
+                    "session_id: cto-session\nSEND_ALL:\n- hl_backend_engineer: backend status\n- hl_frontend_engineer: frontend status",
+                    "session_id: cto-session\nBoth reports replied.",
+                ],
+                "hl_backend_engineer": ["session_id: backend-session\nBackend ready."],
+                "hl_frontend_engineer": ["session_id: frontend-session\nFrontend ready."],
+            }
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args, 0, stdout=outputs[args[0]].pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                runner = HermesRunner(org, cwd=root)
+                result = runner.chat("hl_cto", "ask reports")
+
+        self.assertEqual(result.final_response, "Both reports replied.")
+        self.assertEqual(
+            [(message.sender, message.recipient) for message in result.transcript],
+            [
+                ("user", "hl_cto"),
+                ("hl_cto", "hl_backend_engineer"),
+                ("hl_cto", "hl_frontend_engineer"),
+            ],
+        )
+        self.assertEqual(runner.sessions["hl_cto"], "cto-session")
+
+    def test_runner_send_all_continues_after_blocked_recipient(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND_ALL.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
+                        "    manager: hl_ceo",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "    manager: hl_ceo",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    manager: hl_cto",
+                        "routing: strict_hierarchical",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 3",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            prompts = []
+            outputs = {
+                "hl_advisor": [
+                    "session_id: advisor-session\nSEND_ALL:\n- hl_cto: executive peer check\n- hl_backend_engineer: blocked check",
+                    "session_id: advisor-session\nI got the CTO reply and one blocked route.",
+                ],
+                "hl_cto": ["session_id: cto-session\nCTO replied."],
+            }
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                prompts.append(args[-1])
+                return subprocess.CompletedProcess(args, 0, stdout=outputs[args[0]].pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                result = HermesRunner(org, cwd=root).chat("hl_advisor", "ask both")
+
+        self.assertEqual(result.final_response, "I got the CTO reply and one blocked route.")
+        self.assertIn("hl_cto replied: CTO replied.", prompts[-1])
+        self.assertIn("hl_backend_engineer failed:", prompts[-1])
 
     def test_routing_policy_defaults_to_flat_org(self) -> None:
         org = load_org(Path("config/org.yaml"))
