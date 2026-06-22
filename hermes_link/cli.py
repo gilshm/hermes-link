@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from hermes_link.hermes_runner import HermesRunner
-from hermes_link.log import EventLog, default_log_path, format_event, iter_events
+from hermes_link.log import EventLog, default_log_path, format_event, format_trace, iter_events, trace_events
 from hermes_link.org import load_org
 from hermes_link.session_map import SessionMap
 from hermes_link.status import inspect_agent, yes_no
@@ -33,6 +33,11 @@ def main(argv: list[str] | None = None) -> int:
     log.add_argument("--watch", "-w", action="store_true")
     log.add_argument("--interval", type=float, default=1.0)
     log.add_argument("--color", choices=["auto", "always", "never"], default="auto")
+
+    trace = subparsers.add_parser("trace", help="Show one routed conversation trace")
+    trace.add_argument("thread_id")
+    trace.add_argument("--path", type=Path, default=default_log_path(REPO_ROOT))
+    trace.add_argument("--color", choices=["auto", "always", "never"], default="auto")
 
     agents = subparsers.add_parser("agents", help="Show configured org agents")
     agents.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
@@ -72,6 +77,10 @@ def main(argv: list[str] | None = None) -> int:
             return _watch_log(args.path, interval=args.interval, color=color)
         for event in iter_events(args.path):
             print(format_event(event, color=color))
+        return 0
+    if args.command == "trace":
+        color = _use_color(args.color)
+        print(format_trace(trace_events(args.path, args.thread_id), thread_id=args.thread_id, color=color))
         return 0
     if args.command == "agents":
         org = load_org(args.org)

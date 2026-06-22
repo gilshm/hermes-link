@@ -35,6 +35,21 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("\033[", output.getvalue())
 
+    def test_trace_command_prints_matching_thread(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            EventLog(path).write("message", thread_id="thread-1", from_agent="agent_a", to_agent="agent_b", body="hello")
+            EventLog(path).write("message", thread_id="thread-2", from_agent="agent_a", to_agent="agent_b", body="ignore")
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(["trace", "thread-1", "--path", str(path)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Trace thread-1", output.getvalue())
+        self.assertIn("hello", output.getvalue())
+        self.assertNotIn("ignore", output.getvalue())
+
     def test_sessions_command_prints_session_map(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "session-map.json"

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hermes_link.log import EventLog, format_event, iter_events
+from hermes_link.log import EventLog, format_event, format_trace, iter_events, trace_events
 
 
 class LogTests(unittest.TestCase):
@@ -41,6 +41,30 @@ class LogTests(unittest.TestCase):
         )
 
         self.assertIn("\033[", formatted)
+
+    def test_trace_events_filters_and_formats_thread(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            log = EventLog(path)
+            log.write("bridge_request", thread_id="thread-a", from_agent="agent_a", to_agent="agent_b", body="start")
+            log.write(
+                "message",
+                thread_id="thread-a",
+                from_agent="agent_b",
+                to_agent="agent_a",
+                from_session_id="session-b-12345678",
+                to_session_id="session-a-87654321",
+                body="reply",
+            )
+            log.write("final", thread_id="thread-b", agent="agent_a", body="ignore")
+
+            events = trace_events(path, "thread-a")
+            formatted = format_trace(events, thread_id="thread-a")
+
+        self.assertEqual(len(events), 2)
+        self.assertIn("Trace thread-a", formatted)
+        self.assertIn("bridge agent_a -> agent_b: start", formatted)
+        self.assertIn("agent_b(12345678) -> agent_a(87654321): reply", formatted)
 
 
 if __name__ == "__main__":

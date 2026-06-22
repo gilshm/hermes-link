@@ -134,6 +134,12 @@ Show the log:
 bin/hermes_link log
 ```
 
+Show one conversation trace by thread id or source session id:
+
+```bash
+bin/hermes_link trace <thread_id>
+```
+
 Watch messages live:
 
 ```bash

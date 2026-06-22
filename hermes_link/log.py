@@ -40,6 +40,10 @@ def iter_events(path: Path) -> Iterator[dict[str, Any]]:
         yield json.loads(line)
 
 
+def trace_events(path: Path, thread_id: str) -> list[dict[str, Any]]:
+    return [event for event in iter_events(path) if _matches_thread(event, thread_id)]
+
+
 def format_event(event: dict[str, Any], *, color: bool = False) -> str:
     kind = event.get("event", "event")
     prefix = f"{_format_timestamp(event.get('ts'))} [{_short_thread(event)}]"
@@ -61,6 +65,17 @@ def format_event(event: dict[str, Any], *, color: bool = False) -> str:
     return json.dumps(event, sort_keys=True)
 
 
+def format_trace(events: list[dict[str, Any]], *, thread_id: str, color: bool = False) -> str:
+    if not events:
+        return f"No events found for trace: {thread_id}"
+
+    lines = [f"Trace {thread_id}"]
+    for index, event in enumerate(events):
+        connector = "└─" if index == len(events) - 1 else "├─"
+        lines.append(_format_trace_line(event, connector=connector, color=color))
+    return "\n".join(lines)
+
+
 def _format_timestamp(value: Any) -> str:
     if isinstance(value, int | float):
         return datetime.fromtimestamp(value).strftime("%Y-%m-%d %H:%M:%S")
@@ -72,6 +87,44 @@ def _short_thread(event: dict[str, Any]) -> str:
     if len(thread) <= 12:
         return thread
     return thread[-12:]
+
+
+def _matches_thread(event: dict[str, Any], thread_id: str) -> bool:
+    candidates = [
+        str(event.get("thread_id") or ""),
+        str(event.get("source_session_id") or ""),
+    ]
+    return any(candidate == thread_id or candidate.endswith(thread_id) for candidate in candidates if candidate)
+
+
+def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) -> str:
+    timestamp = _paint(_format_timestamp(event.get("ts")), "90", color)
+    connector = _paint(connector, "34", color)
+    kind = event.get("event")
+    if kind == "bridge_request":
+        body = event.get("body", "")
+        route = _paint(f"bridge {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "33", color)
+        return f"{timestamp} {connector} {route}: {body}"
+    if kind == "message":
+        from_session = _session_suffix(event.get("from_session_id"))
+        to_session = _session_suffix(event.get("to_session_id"))
+        route = _paint(
+            f"{event.get('from_agent', '?')}{from_session} -> {event.get('to_agent', '?')}{to_session}",
+            "36",
+            color,
+        )
+        return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+    if kind == "final":
+        agent = _paint(f"{event.get('agent', '?')} final{_session_suffix(event.get('session_id'))}", "32", color)
+        return f"{timestamp} {connector} {agent}: {event.get('body', '')}"
+    return f"{timestamp} {connector} {json.dumps(event, sort_keys=True)}"
+
+
+def _session_suffix(value: Any) -> str:
+    if not value:
+        return ""
+    session_id = str(value)
+    return f"({session_id[-8:]})"
 
 
 def _paint(value: str, code: str, enabled: bool) -> str:
