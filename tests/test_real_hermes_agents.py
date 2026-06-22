@@ -561,8 +561,8 @@ class RealHermesAgentTests(unittest.TestCase):
                             "hermes_link.cli",
                             "chat",
                             sender,
-                            "Output exactly one Hermes Link SEND directive and no extra text: "
-                            f"SEND {recipient}: Please answer normally with {run_id}.",
+                            "Your entire first response must be exactly one Hermes Link SEND directive and no extra text: "
+                            f"SEND {recipient}: Answer normally with {run_id}. Do not output SEND, SEND_ALL, or HANDOFF.",
                             "--org",
                             str(org),
                             "--max-messages",
