@@ -1,6 +1,7 @@
 # Hermes Link
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
 Hermes Link enables autonomous Hermes agents to communicate and collaborate as
 peers.
