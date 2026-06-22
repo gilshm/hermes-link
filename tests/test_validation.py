@@ -28,6 +28,28 @@ class ValidationTests(unittest.TestCase):
         self.assertIn("agent hl_ceo is missing expertise", errors)
         self.assertIn("agent hl_ceo command not found: hl_ceo", errors)
 
+    def test_validate_org_rejects_old_routing_matrix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            org = _write_repo(root, expertise="Coordinator")
+            org.write_text(
+                org.read_text(encoding="utf-8")
+                + "\n".join(
+                    [
+                        "\nrouting:",
+                        "  default: deny",
+                        "  allow:",
+                        "    hl_ceo:",
+                        "      - '*'",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            errors = validate_org(org, repo_root=root)
+
+        self.assertIn("routing must be flat or strict_hierarchical", errors)
+
 
 def _write_repo(root: Path, *, expertise: str) -> Path:
     skill = root / "skills" / "agent-comms" / "SKILL.md"

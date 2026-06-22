@@ -109,9 +109,9 @@ class RealHermesAgentTests(unittest.TestCase):
                     "-m",
                     "hermes_link.cli",
                     "chat",
-                    "hl_ceo",
+                    "hl_advisor",
                     "Output exactly one Hermes Link SEND directive and no extra text: "
-                    f"SEND hl_advisor: {run_id}",
+                    f"SEND hl_backend_engineer: {run_id}",
                     "--org",
                     str(org),
                     "--max-messages",
@@ -133,7 +133,7 @@ class RealHermesAgentTests(unittest.TestCase):
             )
 
         self.assertIn("routing policy blocked", completed.stdout)
-        self.assertIn("hl_ceo is not allowed to send messages to hl_advisor", completed.stdout)
+        self.assertIn("hl_advisor is not allowed to send messages to hl_backend_engineer", completed.stdout)
 
     def test_hl_ceo_advisor_ceo_roundtrip(self) -> None:
         self.assertIsNotNone(shutil.which("hl_ceo"), "hl_ceo alias is not on PATH")
@@ -282,10 +282,16 @@ def _write_policy_block_org(root: Path) -> Path:
                 "  hl_advisor:",
                 "    command: hl_advisor",
                 "    expertise: Advisor recipient",
-                "routing:",
-                "  deny:",
-                "    hl_ceo:",
-                "      - hl_advisor",
+                "    manager: hl_ceo",
+                "  hl_cto:",
+                "    command: hl_cto",
+                "    expertise: Technical executive",
+                "    manager: hl_ceo",
+                "  hl_backend_engineer:",
+                "    command: hl_backend_engineer",
+                "    expertise: Backend specialist",
+                "    manager: hl_cto",
+                "routing: strict_hierarchical",
                 "skill: skills/agent-comms/SKILL.md",
             ]
         ),

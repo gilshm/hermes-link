@@ -82,5 +82,14 @@ topics:
       - hl_advisor
       - hl_cto
 
+# Routing has two modes:
+# - flat: every configured agent may contact every other configured agent.
+# - strict_hierarchical: agents may contact managers/reports across the hierarchy,
+#   and peers with the same direct manager may contact each other.
+#
+routing: flat
+# To enable hierarchy enforcement later, change to:
+# routing: strict_hierarchical
+
 skill: skills/agent-comms/SKILL.md
 max_messages: 12

@@ -56,8 +56,8 @@ class BridgeRunnerTests(unittest.TestCase):
             root = Path(tmpdir)
             _write_repo_shape(root, policy_block=True)
             payload = {
-                "from_agent": "hl_ceo",
-                "to": "hl_advisor",
+                "from_agent": "hl_advisor",
+                "to": "hl_backend_engineer",
                 "body": "hello",
                 "source_session_id": "session-a",
             }
@@ -96,14 +96,18 @@ def _write_repo_shape(root: Path, *, policy_block: bool = False) -> None:
         "    command: hl_ceo",
         "  hl_advisor:",
         "    command: hl_advisor",
+        "    manager: hl_ceo",
+        "  hl_cto:",
+        "    command: hl_cto",
+        "    manager: hl_ceo",
+        "  hl_backend_engineer:",
+        "    command: hl_backend_engineer",
+        "    manager: hl_cto",
     ]
     if policy_block:
         lines.extend(
             [
-                "routing:",
-                "  deny:",
-                "    hl_ceo:",
-                "      - hl_advisor",
+                "routing: strict_hierarchical",
             ]
         )
     lines.append("skill: skills/agent-comms/SKILL.md")

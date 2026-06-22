@@ -110,37 +110,30 @@ topics:
 
 skill: skills/agent-comms/SKILL.md
 max_messages: 12
+routing: flat
 ```
 
 Agents can route directly to another agent id, or to a topic such as `@review`.
 Topics resolve to their configured default agent.
 
-By default, the org is flat: any configured agent may message any other
-configured agent. Add an optional `routing` section to enforce hierarchy or team
-boundaries:
+Routing currently has two modes only:
 
 ```yaml
-routing:
-  default: deny
-  allow:
-    hl_ceo:
-      - "*"
-    hl_cto:
-      - hl_ceo
-      - hl_backend_engineer
-      - hl_frontend_engineer
-    hl_backend_engineer:
-      - hl_cto
-      - hl_frontend_engineer
-  deny:
-    hl_backend_engineer:
-      - hl_ceo
+routing: flat
 ```
 
-`deny` wins over `allow`. `*` can be used as a sender or recipient wildcard. If
-a route is blocked, Hermes Link does not call the target agent; it returns a
-policy-blocked message to the sending agent and writes a blocked event to the
-log.
+`flat` is the default behavior: any configured agent may message any other
+configured agent.
+
+```yaml
+routing: strict_hierarchical
+```
+
+`strict_hierarchical` allows an agent to message agents above or below it in
+the manager hierarchy. Agents with the same direct manager may also message each
+other directly. Cross-branch routes are blocked. If a route is blocked, Hermes
+Link does not call the target agent; it returns a policy-blocked message to the
+sending agent and writes a blocked event to the log.
 
 ## How Agents Route
 

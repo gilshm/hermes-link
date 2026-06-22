@@ -242,10 +242,14 @@ class AgentCommsTests(unittest.TestCase):
                         "    command: hl_ceo",
                         "  hl_advisor:",
                         "    command: hl_advisor",
-                        "routing:",
-                        "  deny:",
-                        "    hl_ceo:",
-                        "      - hl_advisor",
+                        "    manager: hl_ceo",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "    manager: hl_ceo",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    manager: hl_cto",
+                        "routing: strict_hierarchical",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
                 ),
@@ -256,20 +260,20 @@ class AgentCommsTests(unittest.TestCase):
 
             def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
                 calls.append(args)
-                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND hl_advisor: secret", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND hl_backend_engineer: secret", stderr="")
 
             with (
                 mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
                 mock.patch("subprocess.run", side_effect=fake_run),
             ):
-                result = HermesRunner(org, cwd=root).chat("hl_ceo", "start")
+                result = HermesRunner(org, cwd=root).chat("hl_advisor", "start")
 
         self.assertEqual(len(calls), 1)
         self.assertIn("routing policy blocked", result.final_response)
-        self.assertIn("hl_ceo is not allowed to send messages to hl_advisor", result.final_response)
-        self.assertEqual(result.transcript, [Message("user", "hl_ceo", "start")])
+        self.assertIn("hl_advisor is not allowed to send messages to hl_backend_engineer", result.final_response)
+        self.assertEqual(result.transcript, [Message("user", "hl_advisor", "start")])
 
-    def test_routing_policy_can_default_deny_with_allowlist(self) -> None:
+    def test_routing_policy_can_use_strict_hierarchy(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             skill_path = root / "skills" / "agent-comms" / "SKILL.md"
@@ -285,13 +289,17 @@ class AgentCommsTests(unittest.TestCase):
                         "    command: hl_ceo",
                         "  hl_advisor:",
                         "    command: hl_advisor",
+                        "    manager: hl_ceo",
                         "  hl_cto:",
                         "    command: hl_cto",
-                        "routing:",
-                        "  default: deny",
-                        "  allow:",
-                        "    hl_ceo:",
-                        "      - hl_advisor",
+                        "    manager: hl_ceo",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    manager: hl_cto",
+                        "  hl_frontend_engineer:",
+                        "    command: hl_frontend_engineer",
+                        "    manager: hl_cto",
+                        "routing: strict_hierarchical",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
                 ),
@@ -300,8 +308,11 @@ class AgentCommsTests(unittest.TestCase):
             org = load_org(org_path)
 
         self.assertTrue(org.can_route("hl_ceo", "hl_advisor"))
-        self.assertFalse(org.can_route("hl_advisor", "hl_ceo"))
-        self.assertFalse(org.can_route("hl_ceo", "hl_cto"))
+        self.assertTrue(org.can_route("hl_backend_engineer", "hl_ceo"))
+        self.assertTrue(org.can_route("hl_advisor", "hl_cto"))
+        self.assertTrue(org.can_route("hl_backend_engineer", "hl_frontend_engineer"))
+        self.assertFalse(org.can_route("hl_advisor", "hl_backend_engineer"))
+        self.assertFalse(org.can_route("hl_backend_engineer", "hl_advisor"))
 
     def test_routing_policy_defaults_to_flat_org(self) -> None:
         org = load_org(Path("config/org.yaml"))

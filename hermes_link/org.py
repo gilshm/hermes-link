@@ -26,16 +26,7 @@ class TopicConfig:
 
 @dataclass(frozen=True)
 class RoutingPolicy:
-    default: str
-    allow: dict[str, tuple[str, ...]]
-    deny: dict[str, tuple[str, ...]]
-
-    def is_allowed(self, sender: str, recipient: str) -> bool:
-        if _matches_policy(self.deny, sender, recipient):
-            return False
-        if _matches_policy(self.allow, sender, recipient):
-            return True
-        return self.default == "allow"
+    mode: str
 
 
 @dataclass(frozen=True)
@@ -55,7 +46,15 @@ class OrgConfig:
         raise ValueError(f"unknown agent or topic: {target}")
 
     def can_route(self, sender: str, recipient: str) -> bool:
-        return self.routing.is_allowed(sender, recipient)
+        if self.routing.mode == "flat":
+            return True
+        if sender == recipient:
+            return True
+        return (
+            _is_manager_chain_related(self.agents, sender, recipient)
+            or _is_manager_chain_related(self.agents, recipient, sender)
+            or _same_manager(self.agents, sender, recipient)
+        )
 
 
 def load_org(path: Path) -> OrgConfig:
@@ -110,6 +109,7 @@ def _load_agents(raw: Any) -> dict[str, AgentConfig]:
     unknown_managers = sorted({agent.manager for agent in agents.values() if agent.manager} - set(agents))
     if unknown_managers:
         raise ValueError(f"agent manager references unknown agent(s): {', '.join(unknown_managers)}")
+    _reject_manager_cycles(agents)
     return agents
 
 
@@ -147,37 +147,32 @@ def _load_topics(raw: Any, agents: dict[str, AgentConfig]) -> dict[str, TopicCon
 
 def _load_routing(raw: Any, agents: dict[str, AgentConfig]) -> RoutingPolicy:
     if raw is None:
-        return RoutingPolicy(default="allow", allow={}, deny={})
-    if not isinstance(raw, dict):
-        raise ValueError("routing must be a mapping")
-    default = raw.get("default", "allow")
-    if default not in {"allow", "deny"}:
-        raise ValueError("routing default must be allow or deny")
-    allow = _load_policy_map(raw.get("allow", {}), agents, key="allow")
-    deny = _load_policy_map(raw.get("deny", {}), agents, key="deny")
-    return RoutingPolicy(default=default, allow=allow, deny=deny)
+        return RoutingPolicy(mode="flat")
+    if not isinstance(raw, str) or raw not in {"flat", "strict_hierarchical"}:
+        raise ValueError("routing must be flat or strict_hierarchical")
+    return RoutingPolicy(mode=raw)
 
 
-def _load_policy_map(raw: Any, agents: dict[str, AgentConfig], *, key: str) -> dict[str, tuple[str, ...]]:
-    if not isinstance(raw, dict):
-        raise ValueError(f"routing {key} must be a mapping")
-
-    policy: dict[str, tuple[str, ...]] = {}
-    for sender, recipients in raw.items():
-        if sender != "*" and sender not in agents:
-            raise ValueError(f"routing {key} references unknown sender: {sender}")
-        if not isinstance(recipients, list) or not all(isinstance(recipient, str) for recipient in recipients):
-            raise ValueError(f"routing {key} for {sender} must be a list of agent ids")
-        unknown = sorted(recipient for recipient in recipients if recipient != "*" and recipient not in agents)
-        if unknown:
-            raise ValueError(f"routing {key} for {sender} references unknown recipient(s): {', '.join(unknown)}")
-        policy[sender] = tuple(recipients)
-    return policy
-
-
-def _matches_policy(policy: dict[str, tuple[str, ...]], sender: str, recipient: str) -> bool:
-    for source in (sender, "*"):
-        recipients = policy.get(source, ())
-        if "*" in recipients or recipient in recipients:
+def _is_manager_chain_related(agents: dict[str, AgentConfig], manager: str, report: str) -> bool:
+    current = agents[report].manager
+    while current:
+        if current == manager:
             return True
+        current = agents[current].manager
     return False
+
+
+def _same_manager(agents: dict[str, AgentConfig], sender: str, recipient: str) -> bool:
+    sender_manager = agents[sender].manager
+    return bool(sender_manager and sender_manager == agents[recipient].manager)
+
+
+def _reject_manager_cycles(agents: dict[str, AgentConfig]) -> None:
+    for name in agents:
+        seen: set[str] = set()
+        current = agents[name].manager
+        while current:
+            if current in seen or current == name:
+                raise ValueError(f"agent manager hierarchy contains a cycle involving {name}")
+            seen.add(current)
+            current = agents[current].manager
