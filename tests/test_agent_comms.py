@@ -314,6 +314,69 @@ class AgentCommsTests(unittest.TestCase):
         self.assertFalse(org.can_route("hl_advisor", "hl_backend_engineer"))
         self.assertFalse(org.can_route("hl_backend_engineer", "hl_advisor"))
 
+    def test_runner_handles_strict_hierarchy_multi_hop_scenario(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "    manager: hl_ceo",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    manager: hl_cto",
+                        "  hl_frontend_engineer:",
+                        "    command: hl_frontend_engineer",
+                        "    manager: hl_cto",
+                        "routing: strict_hierarchical",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 6",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            outputs = [
+                "session_id: ceo-session\nSEND hl_cto: ask engineering",
+                "session_id: cto-session\nSEND hl_backend_engineer: inspect API",
+                "session_id: backend-session\nSEND hl_frontend_engineer: confirm UI contract",
+                "session_id: frontend-session\nSEND hl_cto: UI contract confirmed",
+                "session_id: cto-session\nSEND hl_ceo: engineering answer ready",
+                "session_id: ceo-session\nfinal answer to user",
+            ]
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                result = HermesRunner(org, cwd=root).chat("hl_ceo", "plan the feature")
+
+        self.assertEqual(
+            [(message.sender, message.recipient) for message in result.transcript],
+            [
+                ("user", "hl_ceo"),
+                ("hl_ceo", "hl_cto"),
+                ("hl_cto", "hl_backend_engineer"),
+                ("hl_backend_engineer", "hl_frontend_engineer"),
+                ("hl_frontend_engineer", "hl_cto"),
+                ("hl_cto", "hl_ceo"),
+            ],
+        )
+        self.assertEqual(result.final_response, "final answer to user")
+        self.assertEqual(result.turns[-1].session_id, "ceo-session")
+
     def test_routing_policy_defaults_to_flat_org(self) -> None:
         org = load_org(Path("config/org.yaml"))
 
@@ -456,6 +519,7 @@ class AgentCommsTests(unittest.TestCase):
 
         self.assertIn("- hl_ceo: hl_ceo. Coordinator", prompts[0])
         self.assertIn("- hl_advisor: hl_advisor. Review specialist", prompts[0])
+        self.assertIn("Mode: flat. Any configured agent may contact any other configured agent.", prompts[0])
 
 
 if __name__ == "__main__":

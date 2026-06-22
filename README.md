@@ -53,6 +53,12 @@ Validate the org and local install inputs:
 bin/hermes_link org validate
 ```
 
+Print the org hierarchy:
+
+```bash
+bin/hermes_link org graph
+```
+
 ## Configure The Org
 
 `config/org.yaml` is the directory agents see when deciding who to contact:

@@ -135,6 +135,50 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertIn("routing policy blocked", completed.stdout)
         self.assertIn("hl_advisor is not allowed to send messages to hl_backend_engineer", completed.stdout)
 
+    def test_hermes_link_cli_allows_strict_hierarchy_routes(self) -> None:
+        route_pairs = [
+            ("hl_ceo", "hl_cto"),
+            ("hl_cto", "hl_backend_engineer"),
+            ("hl_backend_engineer", "hl_frontend_engineer"),
+            ("hl_backend_engineer", "hl_ceo"),
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            org = _write_strict_org(Path(tmpdir))
+            for sender, recipient in route_pairs:
+                with self.subTest(sender=sender, recipient=recipient):
+                    run_id = f"HERMES_STRICT_ALLOWED_{uuid.uuid4().hex}"
+                    completed = subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "hermes_link.cli",
+                            "chat",
+                            sender,
+                            "Output exactly one Hermes Link SEND directive and no extra text: "
+                            f"SEND {recipient}: Please answer normally with {run_id}.",
+                            "--org",
+                            str(org),
+                            "--max-messages",
+                            "6",
+                            "--timeout",
+                            str(TIMEOUT_SECONDS),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=TIMEOUT_SECONDS * 7,
+                    )
+                    if completed.returncode != 0:
+                        raise AssertionError(
+                            f"allowed strict route failed with exit code {completed.returncode}\n"
+                            f"route: {sender} -> {recipient}\n"
+                            f"stdout:\n{completed.stdout}\n"
+                            f"stderr:\n{completed.stderr}"
+                        )
+                    self.assertNotIn("routing policy blocked", completed.stdout)
+                    self.assertIn(f"{sender} -> {recipient}:", completed.stdout)
+                    self.assertIn(run_id, completed.stdout)
+
     def test_hl_ceo_advisor_ceo_roundtrip(self) -> None:
         self.assertIsNotNone(shutil.which("hl_ceo"), "hl_ceo alias is not on PATH")
         self.assertIsNotNone(shutil.which("hl_advisor"), "hl_advisor alias is not on PATH")
@@ -267,6 +311,10 @@ def _run_hl_ceo_with_plugin(prompt: str) -> subprocess.CompletedProcess[str]:
 
 
 def _write_policy_block_org(root: Path) -> Path:
+    return _write_strict_org(root)
+
+
+def _write_strict_org(root: Path) -> Path:
     skill = root / "skills" / "agent-comms" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text("Use SEND agent_id: message.", encoding="utf-8")
@@ -290,6 +338,10 @@ def _write_policy_block_org(root: Path) -> Path:
                 "  hl_backend_engineer:",
                 "    command: hl_backend_engineer",
                 "    expertise: Backend specialist",
+                "    manager: hl_cto",
+                "  hl_frontend_engineer:",
+                "    command: hl_frontend_engineer",
+                "    expertise: Frontend specialist",
                 "    manager: hl_cto",
                 "routing: strict_hierarchical",
                 "skill: skills/agent-comms/SKILL.md",

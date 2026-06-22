@@ -243,6 +243,8 @@ class HermesRunner:
         return (
             "Hermes Link org directory:\n"
             f"{agent_directory}\n\n"
+            "Hermes Link org routing policy:\n"
+            f"{self._routing_guidance()}\n\n"
             "Hermes Link routing instructions:\n"
             f"{instructions}\n\n"
             "User or routed message:\n"
@@ -267,6 +269,15 @@ class HermesRunner:
             members = ", ".join(topic.agents)
             lines.append(f"- @{name}: topic default {topic.default}; agents: {members}")
         return "\n".join(lines)
+
+    def _routing_guidance(self) -> str:
+        if self._org.routing.mode == "flat":
+            return "Mode: flat. Any configured agent may contact any other configured agent."
+        return (
+            "Mode: strict_hierarchical. Contact agents above or below you in the manager hierarchy. "
+            "You may also contact direct peers with the same manager. For cross-branch work, route "
+            "through your manager instead of contacting unrelated agents directly."
+        )
 
     def _resolve_agent(self, target: str) -> str:
         return self._org.resolve_agent(target)

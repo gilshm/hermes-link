@@ -125,6 +125,47 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("org config ok", output.getvalue())
 
+    def test_org_graph_command_prints_hierarchy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            org = root / "config" / "org.yaml"
+            org.parent.mkdir()
+            org.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "    title: CEO",
+                        "    expertise: Coordinator",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "    title: CTO",
+                        "    team: executive",
+                        "    manager: hl_ceo",
+                        "    expertise: Technical lead",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    title: Backend Engineer",
+                        "    team: engineering",
+                        "    manager: hl_cto",
+                        "    expertise: Backend",
+                        "routing: strict_hierarchical",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(["org", "graph", "--org", str(org)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("routing: strict_hierarchical", output.getvalue())
+        self.assertIn("`-- hl_ceo: CEO", output.getvalue())
+        self.assertIn("`-- hl_backend_engineer: Backend Engineer", output.getvalue())
+
     def test_agents_command_can_run_health_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

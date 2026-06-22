@@ -9,7 +9,7 @@ from uuid import uuid4
 from hermes_link.doctor import run_doctor
 from hermes_link.hermes_runner import HermesRunner
 from hermes_link.log import EventLog, default_log_path, format_event, format_trace, iter_events, trace_events
-from hermes_link.org import load_org
+from hermes_link.org import OrgConfig, load_org
 from hermes_link.session_map import SessionMap
 from hermes_link.status import check_agent_health, inspect_agent, yes_no
 from hermes_link.validation import validate_org
@@ -59,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     org_subparsers = org_parser.add_subparsers(dest="org_command", required=True)
     org_validate = org_subparsers.add_parser("validate", help="Validate config/org.yaml")
     org_validate.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
+    org_graph = org_subparsers.add_parser("graph", help="Print the configured org hierarchy")
+    org_graph.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
 
     args = parser.parse_args(argv)
     if args.command == "chat":
@@ -136,8 +138,62 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("org config ok")
         return 0
+    if args.command == "org" and args.org_command == "graph":
+        print(_format_org_graph(load_org(args.org)))
+        return 0
 
     raise AssertionError(f"unhandled command: {args.command}")
+
+
+def _format_org_graph(org: OrgConfig) -> str:
+    agents = org.agents
+    children: dict[str, list[str]] = {name: [] for name in agents}
+    roots = []
+    for name, agent in agents.items():
+        if agent.manager:
+            children[agent.manager].append(name)
+        else:
+            roots.append(name)
+    for names in children.values():
+        names.sort()
+    roots.sort()
+
+    lines = [f"routing: {org.routing.mode}", "agents:"]
+    for index, root in enumerate(roots):
+        _append_agent_tree(lines, agents, children, root, prefix="", is_last=index == len(roots) - 1)
+    return "\n".join(lines)
+
+
+def _append_agent_tree(
+    lines: list[str],
+    agents: dict,
+    children: dict[str, list[str]],
+    name: str,
+    *,
+    prefix: str,
+    is_last: bool,
+) -> None:
+    connector = "`-- " if is_last else "|-- "
+    agent = agents[name]
+    title = agent.title or name
+    details = []
+    if agent.team:
+        details.append(f"team={agent.team}")
+    if agent.manager:
+        details.append(f"manager={agent.manager}")
+    suffix = f" ({'; '.join(details)})" if details else ""
+    lines.append(f"{prefix}{connector}{name}: {title}{suffix}")
+    next_prefix = prefix + ("    " if is_last else "|   ")
+    child_names = children[name]
+    for index, child in enumerate(child_names):
+        _append_agent_tree(
+            lines,
+            agents,
+            children,
+            child,
+            prefix=next_prefix,
+            is_last=index == len(child_names) - 1,
+        )
 
 
 def _watch_log(path: Path, *, interval: float, color: bool) -> int:
