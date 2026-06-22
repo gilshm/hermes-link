@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 
 _SEND_RE = re.compile(r"^\s*SEND\s+(@?[A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$", re.DOTALL)
+_HANDOFF_RE = re.compile(r"^\s*HANDOFF\s+(@?[A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$", re.DOTALL)
 _SEND_ALL_HEADER_RE = re.compile(r"^\s*SEND_ALL\s*:\s*$")
 _SEND_ALL_TARGET_RE = re.compile(r"^\s*SEND_ALL\s+(@?[A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$", re.DOTALL)
 _SEND_ALL_ITEM_RE = re.compile(r"^\s*-\s+(@?[A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$", re.DOTALL)
@@ -21,10 +22,19 @@ class SendAllDirective:
     sends: tuple[SendDirective, ...]
 
 
-def parse_send_directive(text: str) -> SendDirective | SendAllDirective | None:
+@dataclass(frozen=True)
+class HandoffDirective:
+    recipient: str
+    body: str
+
+
+def parse_send_directive(text: str) -> SendDirective | SendAllDirective | HandoffDirective | None:
     send_all = _parse_send_all_directive(text)
     if send_all is not None:
         return send_all
+    handoff_match = _HANDOFF_RE.match(text.strip())
+    if handoff_match is not None:
+        return HandoffDirective(recipient=handoff_match.group(1), body=handoff_match.group(2).strip())
     match = _SEND_RE.match(text.strip())
     if match is None:
         return None

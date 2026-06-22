@@ -8,7 +8,7 @@ import concurrent.futures
 from dataclasses import dataclass
 from pathlib import Path
 
-from hermes_link.directive import SendAllDirective, SendDirective, parse_send_directive
+from hermes_link.directive import HandoffDirective, SendAllDirective, SendDirective, parse_send_directive
 from hermes_link.log import EventLog
 from hermes_link.message import Message
 from hermes_link.org import OrgConfig
@@ -29,6 +29,7 @@ class ChatResult:
     transcript: list[Message]
     turns: list[AgentTurn]
     final_response: str
+    handoff: bool = False
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,46 @@ class HermesRunner:
                     allow_tools=False,
                 )
                 continue
+            if isinstance(directive, HandoffDirective):
+                recipient = self._resolve_agent(directive.recipient)
+                if not self._org.can_route(current_agent, recipient):
+                    denial = _policy_denial(current_agent, recipient)
+                    self._log(
+                        "blocked",
+                        from_agent=current_agent,
+                        to_agent=recipient,
+                        from_session_id=turn.session_id,
+                        body=directive.body,
+                        reason=denial,
+                    )
+                    return ChatResult(transcript, turns, denial)
+                transcript.append(Message(current_agent, recipient, directive.body))
+                self._log(
+                    "handoff",
+                    from_agent=current_agent,
+                    to_agent=recipient,
+                    from_session_id=turn.session_id,
+                    to_session_id=self._sessions.get(recipient),
+                    body=directive.body,
+                )
+                handoff_prompt = self._agent_prompt(
+                    "Original user request:\n"
+                    f"{prompt}\n\n"
+                    f"{current_agent} handed this conversation off to you:\n\n"
+                    f"{directive.body}\n\n"
+                    "You now own the conversation. Answer the original user directly. "
+                    "Do not send the answer back to the handing-off agent unless you need more help.",
+                    allow_tools=False,
+                )
+                final_turn = self._run_agent(recipient, handoff_prompt)
+                turns.append(final_turn)
+                self._log(
+                    "final",
+                    agent=recipient,
+                    session_id=final_turn.session_id,
+                    body=final_turn.response,
+                )
+                return ChatResult(transcript, turns, final_turn.response, handoff=True)
 
             recipient = self._resolve_agent(directive.recipient)
             if not self._org.can_route(current_agent, recipient):
@@ -190,6 +231,8 @@ class HermesRunner:
             raise RuntimeError(f"{agent} did not emit a SEND directive:\n{turn.response}")
         if isinstance(directive, SendAllDirective):
             raise RuntimeError(f"{agent} emitted SEND_ALL where one SEND directive was required:\n{turn.response}")
+        if isinstance(directive, HandoffDirective):
+            raise RuntimeError(f"{agent} emitted HANDOFF where one SEND directive was required:\n{turn.response}")
         recipient = self._resolve_agent(directive.recipient)
         if not self._org.can_route(agent, recipient):
             raise RuntimeError(_policy_denial(agent, recipient))
@@ -373,6 +416,8 @@ class HermesRunner:
                 "- agent_id: message\n"
                 "- agent_id: message\n"
                 "Or output SEND_ALL @target: message for a configured group or built-in broadcast target.\n"
+                "If another agent should take over and answer the user directly, output exactly:\n"
+                "HANDOFF agent_id: context for the agent taking over\n"
                 "If you are done, answer normally."
             )
         return (

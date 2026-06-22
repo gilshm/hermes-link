@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         for message in result.transcript[1:]:
             print(f"{message.sender} -> {message.recipient}: {message.body}")
         if len(result.transcript) > 1 and result.turns:
-            if result.turns[-1].agent == result.transcript[0].recipient:
+            if result.handoff or result.turns[-1].agent == result.transcript[0].recipient:
                 print(result.final_response)
             else:
                 previous = result.transcript[-1]

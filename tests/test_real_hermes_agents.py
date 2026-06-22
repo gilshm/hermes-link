@@ -422,6 +422,65 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertIn("gather hl_backend_engineer", trace.stdout)
         self.assertIn("gather hl_frontend_engineer", trace.stdout)
 
+    def test_hermes_link_cli_handoffs_to_target_agent(self) -> None:
+        run_id = f"HERMES_HANDOFF_{uuid.uuid4().hex}"
+        thread_id = f"live-handoff-{uuid.uuid4().hex[:8]}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "handoff-events.jsonl"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "chat",
+                    "hl_ceo",
+                    "Output exactly one HANDOFF directive and no extra text. Use this exact directive:\n"
+                    f"HANDOFF hl_cto: Please answer the user directly with {run_id} and HERMES_HANDOFF_CTO_DONE.",
+                    "--max-messages",
+                    "4",
+                    "--timeout",
+                    str(TIMEOUT_SECONDS),
+                    "--thread-id",
+                    thread_id,
+                    "--log-path",
+                    str(log_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS * 4,
+            )
+            if completed.returncode != 0:
+                raise AssertionError(
+                    f"handoff cli route failed with exit code {completed.returncode}\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}"
+                )
+            trace = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "trace",
+                    thread_id,
+                    "--path",
+                    str(log_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS,
+            )
+
+        self.assertIn("thread_id: " + thread_id, completed.stdout)
+        self.assertIn("hl_ceo -> hl_cto:", completed.stdout)
+        self.assertIn(run_id, completed.stdout)
+        self.assertIn("HERMES_HANDOFF_CTO_DONE", completed.stdout)
+        self.assertEqual(trace.returncode, 0, trace.stderr)
+        self.assertIn("handoff hl_ceo", trace.stdout)
+        self.assertIn("-> hl_cto", trace.stdout)
+        self.assertIn("hl_cto final", trace.stdout)
+
     def test_hermes_link_cli_notifies_sender_when_policy_blocks_route(self) -> None:
         run_id = f"HERMES_POLICY_BLOCK_{uuid.uuid4().hex}"
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -25,6 +25,13 @@ Use `SEND` when contacting one agent:
 SEND agent_id: message
 ```
 
+Use `HANDOFF` when another agent should take over the conversation and answer
+the user directly:
+
+```text
+HANDOFF agent_id: context for the agent taking over
+```
+
 Use `SEND_ALL` when contacting multiple agents in parallel and you need the
 available replies before continuing:
 
@@ -55,6 +62,7 @@ Examples:
 ```text
 SEND hl_advisor: Please review this idea and respond to hl_ceo.
 SEND hl_ceo: I reviewed it. The smallest next step is clear.
+HANDOFF hl_cto: This is a technical architecture question. Please answer the user directly.
 SEND_ALL:
 - hl_backend_engineer: Please review the API impact.
 - hl_frontend_engineer: Please review the UI impact.
@@ -66,6 +74,8 @@ Rules:
 
 - Use only agent ids that exist in the org.
 - Choose the recipient based on the expertise listed in the org directory.
+- Use `HANDOFF` only when the target agent should become the final owner of the
+  conversation and respond directly to the user.
 - You may also use configured topics such as `@review` when the org directory
   lists them.
 - Use configured groups such as `@engineering` only with `SEND_ALL`; groups

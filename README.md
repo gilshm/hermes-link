@@ -200,7 +200,13 @@ The skill also documents a text fallback:
 ```text
 SEND hl_advisor: message
 SEND @review: message
+HANDOFF hl_cto: context for the agent taking over
 ```
+
+Use `HANDOFF` when the current agent should transfer ownership to another agent
+instead of collecting a reply and summarizing it. Hermes Link calls the target
+agent with the original request and handoff context, then returns that target
+agent's answer directly to the user.
 
 Agents can also fan out to multiple independent recipients and wait for the
 available replies:

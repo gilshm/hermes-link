@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from hermes_link.directive import SendAllDirective, SendDirective, parse_send_directive
+from hermes_link.directive import HandoffDirective, SendAllDirective, SendDirective, parse_send_directive
 from hermes_link.hermes_runner import HermesRunner
 from hermes_link.message import Message
 from hermes_link.org import load_org
@@ -21,6 +21,10 @@ class AgentCommsTests(unittest.TestCase):
         self.assertEqual(
             parse_send_directive("SEND @review: hello there"),
             SendDirective("@review", "hello there"),
+        )
+        self.assertEqual(
+            parse_send_directive("HANDOFF hl_cto: answer this directly"),
+            HandoffDirective("hl_cto", "answer this directly"),
         )
         self.assertIsNone(parse_send_directive("hello user"))
 
@@ -183,6 +187,104 @@ class AgentCommsTests(unittest.TestCase):
         self.assertEqual(runner.sessions["hl_ceo"], "session-a")
         self.assertEqual(calls[2][calls[2].index("-r") + 1], "session-a")
         self.assertFalse(any(call[1:3] == ["sessions", "list"] for call in calls))
+
+    def test_runner_handoffs_conversation_to_recipient_for_direct_final_answer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use HANDOFF agent_id: context.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 4",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            calls: list[list[str]] = []
+            outputs = [
+                "session_id: ceo-session\nHANDOFF hl_cto: technical context",
+                "session_id: cto-session\nCTO final answer",
+            ]
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                calls.append(args)
+                return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                result = HermesRunner(org, cwd=root).chat("hl_ceo", "answer architecture question")
+
+        self.assertEqual(result.final_response, "CTO final answer")
+        self.assertEqual(
+            result.transcript,
+            [
+                Message("user", "hl_ceo", "answer architecture question"),
+                Message("hl_ceo", "hl_cto", "technical context"),
+            ],
+        )
+        self.assertEqual([call[0] for call in calls], ["hl_ceo", "hl_cto"])
+        self.assertIn("You now own the conversation", calls[1][-1])
+        self.assertIn("answer architecture question", calls[1][-1])
+        self.assertIn("technical context", calls[1][-1])
+
+    def test_runner_notifies_sender_when_policy_blocks_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use HANDOFF agent_id: context.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
+                        "    manager: hl_ceo",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "    manager: hl_ceo",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    manager: hl_cto",
+                        "routing: strict_hierarchical",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            calls: list[list[str]] = []
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                calls.append(args)
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: advisor-session\nHANDOFF hl_backend_engineer: blocked", stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                result = HermesRunner(org, cwd=root).chat("hl_advisor", "handoff")
+
+        self.assertEqual(len(calls), 1)
+        self.assertIn("routing policy blocked", result.final_response)
+        self.assertIn("hl_advisor is not allowed to send messages to hl_backend_engineer", result.final_response)
 
     def test_runner_keeps_parallel_conversations_isolated(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1040,6 +1142,39 @@ class AgentCommsTests(unittest.TestCase):
 
         self.assertEqual(routed.message, Message("hl_ceo", "hl_advisor", "hello"))
         self.assertEqual(routed.turn.session_id, "session-a")
+
+    def test_runner_request_send_rejects_handoff_directive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nHANDOFF hl_cto: take over", stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+                self.assertRaisesRegex(RuntimeError, "emitted HANDOFF where one SEND directive was required"),
+            ):
+                HermesRunner(org, cwd=root).request_send("hl_ceo", "handoff")
 
     def test_runner_rejects_missing_agent_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

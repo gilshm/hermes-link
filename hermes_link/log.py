@@ -53,6 +53,12 @@ def format_event(event: dict[str, Any], *, color: bool = False) -> str:
             f"{_paint(prefix, '90', color)} {_paint('├─', '34', color)} {arrow}: "
             f"{event.get('body', '')}"
         )
+    if kind == "handoff":
+        arrow = _paint(f"handoff {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "33", color)
+        return (
+            f"{_paint(prefix, '90', color)} {_paint('╞═', '33', color)} {arrow}: "
+            f"{event.get('body', '')}"
+        )
     if kind == "final":
         agent = _paint(f"{event.get('agent', '?')} final", "32", color)
         return f"{_paint(prefix, '90', color)} {_paint('└─', '32', color)} {agent}: {event.get('body', '')}"
@@ -133,6 +139,15 @@ def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) ->
         route = _paint(
             f"{event.get('from_agent', '?')}{from_session} -> {event.get('to_agent', '?')}{to_session}",
             "36",
+            color,
+        )
+        return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+    if kind == "handoff":
+        from_session = _session_suffix(event.get("from_session_id"))
+        to_session = _session_suffix(event.get("to_session_id"))
+        route = _paint(
+            f"handoff {event.get('from_agent', '?')}{from_session} -> {event.get('to_agent', '?')}{to_session}",
+            "33",
             color,
         )
         return f"{timestamp} {connector} {route}: {event.get('body', '')}"

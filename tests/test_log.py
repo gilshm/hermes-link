@@ -101,6 +101,27 @@ class LogTests(unittest.TestCase):
         self.assertIn("gather hl_backend_engineer", formatted)
         self.assertIn("scatter failed hl_cto -> hl_frontend_engineer: timeout", formatted)
 
+    def test_trace_formats_handoff_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            log = EventLog(path)
+            log.write(
+                "handoff",
+                thread_id="thread-a",
+                from_agent="hl_ceo",
+                to_agent="hl_cto",
+                from_session_id="ceo-12345678",
+                to_session_id="cto-87654321",
+                body="take over",
+            )
+
+            event = trace_events(path, "thread-a")[0]
+            formatted_event = format_event(event)
+            formatted_trace = format_trace([event], thread_id="thread-a")
+
+        self.assertIn("handoff hl_ceo -> hl_cto: take over", formatted_event)
+        self.assertIn("handoff hl_ceo(12345678) -> hl_cto(87654321): take over", formatted_trace)
+
 
 if __name__ == "__main__":
     unittest.main()
