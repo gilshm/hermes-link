@@ -3,6 +3,7 @@ name = "hermes-link"
 version = "0.1.0"
 description = "Hermes agent communication routing"
 requires-python = ">=3.10"
+license = "MIT"
 dependencies = ["PyYAML"]
 
 [project.scripts]

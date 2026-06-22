@@ -1,5 +1,7 @@
 # Hermes Link
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 Hermes Link enables autonomous Hermes agents to communicate and collaborate as
 peers.
 
