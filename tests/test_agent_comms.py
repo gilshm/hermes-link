@@ -1,5 +1,7 @@
+import concurrent.futures
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -92,6 +94,202 @@ class AgentCommsTests(unittest.TestCase):
         self.assertNotIn("-r", calls[1])
         self.assertIn("-r", calls[2])
         self.assertEqual(calls[2][calls[2].index("-r") + 1], "session-a")
+
+    def test_runner_keeps_parallel_conversations_isolated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 4",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            lock = threading.Lock()
+            calls_by_run = {"RUN_A": [], "RUN_B": []}
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                prompt = args[-1]
+                run_id = "RUN_A" if "RUN_A" in prompt else "RUN_B"
+                agent = args[0]
+                with lock:
+                    calls_by_run[run_id].append(args)
+                    call_number = len(calls_by_run[run_id])
+                if agent == "hl_ceo" and call_number == 1:
+                    stdout = f"session_id: ceo-{run_id}\nSEND hl_advisor: {run_id} delegated"
+                elif agent == "hl_advisor":
+                    stdout = f"session_id: advisor-{run_id}\n{run_id} advisor answer"
+                else:
+                    stdout = f"session_id: ceo-{run_id}\n{run_id} final answer"
+                return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+            def run_conversation(run_id: str) -> object:
+                runner = HermesRunner(org, cwd=root)
+                result = runner.chat("hl_ceo", f"start {run_id}")
+                return result, runner.sessions
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+                concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor,
+            ):
+                futures = [executor.submit(run_conversation, run_id) for run_id in ("RUN_A", "RUN_B")]
+                results = [future.result(timeout=5) for future in futures]
+
+        by_run = {result.final_response.split()[0]: (result, sessions) for result, sessions in results}
+        self.assertEqual(set(by_run), {"RUN_A", "RUN_B"})
+        for run_id, (result, sessions) in by_run.items():
+            other_run = "RUN_B" if run_id == "RUN_A" else "RUN_A"
+            self.assertEqual(result.final_response, f"{run_id} final answer")
+            self.assertEqual(
+                result.transcript,
+                [
+                    Message("user", "hl_ceo", f"start {run_id}"),
+                    Message("hl_ceo", "hl_advisor", f"{run_id} delegated"),
+                    Message("hl_advisor", "hl_ceo", f"{run_id} advisor answer"),
+                ],
+            )
+            self.assertEqual(sessions["hl_ceo"], f"ceo-{run_id}")
+            self.assertEqual(sessions["hl_advisor"], f"advisor-{run_id}")
+            self.assertNotIn(other_run, " ".join(message.body for message in result.transcript))
+
+    def test_runner_keeps_parallel_employee_sets_isolated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "  hl_product_manager:",
+                        "    command: hl_product_manager",
+                        "  hl_frontend_engineer:",
+                        "    command: hl_frontend_engineer",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 4",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            lock = threading.Lock()
+            calls_by_run = {"EXEC_RUN": [], "ENG_RUN": [], "PRODUCT_RUN": []}
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                prompt = args[-1]
+                if "EXEC_RUN" in prompt:
+                    run_id = "EXEC_RUN"
+                elif "ENG_RUN" in prompt:
+                    run_id = "ENG_RUN"
+                else:
+                    run_id = "PRODUCT_RUN"
+                agent = args[0]
+                with lock:
+                    calls_by_run[run_id].append(args)
+                    call_number = len(calls_by_run[run_id])
+                if run_id == "EXEC_RUN":
+                    stdout = (
+                        "session_id: exec-ceo\nSEND hl_advisor: EXEC_RUN delegated"
+                        if call_number == 1
+                        else f"session_id: exec-advisor\nEXEC_RUN advisor answer"
+                    )
+                    if agent == "hl_ceo" and call_number == 3:
+                        stdout = "session_id: exec-ceo\nEXEC_RUN final answer"
+                elif run_id == "ENG_RUN":
+                    if call_number == 1:
+                        stdout = "session_id: eng-cto\nSEND hl_backend_engineer: ENG_RUN delegated"
+                    elif agent == "hl_backend_engineer":
+                        stdout = "session_id: eng-backend\nENG_RUN backend answer"
+                    else:
+                        stdout = "session_id: eng-cto\nENG_RUN final answer"
+                elif call_number == 1:
+                    stdout = "session_id: product-pm\nSEND hl_frontend_engineer: PRODUCT_RUN delegated"
+                elif agent == "hl_frontend_engineer":
+                    stdout = "session_id: product-frontend\nPRODUCT_RUN frontend answer"
+                else:
+                    stdout = "session_id: product-pm\nPRODUCT_RUN final answer"
+                return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+            conversations = [
+                ("EXEC_RUN", "hl_ceo"),
+                ("ENG_RUN", "hl_cto"),
+                ("PRODUCT_RUN", "hl_product_manager"),
+            ]
+
+            def run_conversation(run_id: str, sender: str) -> object:
+                runner = HermesRunner(org, cwd=root)
+                result = runner.chat(sender, f"start {run_id}")
+                return result, runner.sessions
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+                concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor,
+            ):
+                futures = [
+                    executor.submit(run_conversation, run_id, sender)
+                    for run_id, sender in conversations
+                ]
+                results = [future.result(timeout=5) for future in futures]
+
+        by_run = {result.final_response.split()[0]: (result, sessions) for result, sessions in results}
+        self.assertEqual(set(by_run), {"EXEC_RUN", "ENG_RUN", "PRODUCT_RUN"})
+        exec_result, exec_sessions = by_run["EXEC_RUN"]
+        eng_result, eng_sessions = by_run["ENG_RUN"]
+        product_result, product_sessions = by_run["PRODUCT_RUN"]
+        self.assertEqual(
+            [(message.sender, message.recipient) for message in exec_result.transcript],
+            [("user", "hl_ceo"), ("hl_ceo", "hl_advisor"), ("hl_advisor", "hl_ceo")],
+        )
+        self.assertEqual(
+            [(message.sender, message.recipient) for message in eng_result.transcript],
+            [("user", "hl_cto"), ("hl_cto", "hl_backend_engineer"), ("hl_backend_engineer", "hl_cto")],
+        )
+        self.assertEqual(
+            [(message.sender, message.recipient) for message in product_result.transcript],
+            [
+                ("user", "hl_product_manager"),
+                ("hl_product_manager", "hl_frontend_engineer"),
+                ("hl_frontend_engineer", "hl_product_manager"),
+            ],
+        )
+        self.assertEqual(exec_sessions, {"hl_ceo": "exec-ceo", "hl_advisor": "exec-advisor"})
+        self.assertEqual(eng_sessions, {"hl_cto": "eng-cto", "hl_backend_engineer": "eng-backend"})
+        self.assertEqual(
+            product_sessions,
+            {"hl_product_manager": "product-pm", "hl_frontend_engineer": "product-frontend"},
+        )
+        self.assertNotIn("ENG_RUN", " ".join(message.body for message in exec_result.transcript))
+        self.assertNotIn("PRODUCT_RUN", " ".join(message.body for message in exec_result.transcript))
+        self.assertNotIn("EXEC_RUN", " ".join(message.body for message in eng_result.transcript))
+        self.assertNotIn("PRODUCT_RUN", " ".join(message.body for message in eng_result.transcript))
+        self.assertNotIn("EXEC_RUN", " ".join(message.body for message in product_result.transcript))
+        self.assertNotIn("ENG_RUN", " ".join(message.body for message in product_result.transcript))
 
     def test_runner_returns_recipient_reply_to_origin_agent_for_final_answer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

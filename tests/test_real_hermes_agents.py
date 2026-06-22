@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import os
 import re
@@ -98,6 +99,124 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertIn("hl_advisor -> hl_ceo:", completed.stdout)
         self.assertIn("HERMES_LINK_SKILL_TEST_PONG", completed.stdout)
         self.assertIn("HERMES_LINK_SKILL_TEST_DONE", completed.stdout)
+
+    def test_hermes_link_cli_runs_parallel_conversations(self) -> None:
+        run_ids = [f"HERMES_PARALLEL_{uuid.uuid4().hex}" for _ in range(2)]
+
+        def run_conversation(index: int, run_id: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "chat",
+                    "hl_ceo",
+                    f"This is parallel conversation {index}. Send exactly one message to hl_advisor asking it "
+                    f"to reply normally with {run_id} and HERMES_PARALLEL_REPLY_{index}. When hl_advisor "
+                    f"replies, answer the user with {run_id} and HERMES_PARALLEL_DONE_{index}.",
+                    "--max-messages",
+                    "4",
+                    "--timeout",
+                    str(TIMEOUT_SECONDS),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS * 5,
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(run_ids)) as executor:
+            futures = [
+                executor.submit(run_conversation, index, run_id)
+                for index, run_id in enumerate(run_ids, start=1)
+            ]
+            completed_runs = [future.result(timeout=TIMEOUT_SECONDS * 6) for future in futures]
+
+        for index, (run_id, completed) in enumerate(zip(run_ids, completed_runs), start=1):
+            if completed.returncode != 0:
+                raise AssertionError(
+                    f"parallel cli conversation failed with exit code {completed.returncode}\n"
+                    f"run_id: {run_id}\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}"
+                )
+            self.assertIn("hl_ceo -> hl_advisor:", completed.stdout)
+            self.assertIn("hl_advisor -> hl_ceo:", completed.stdout)
+            self.assertIn(run_id, completed.stdout)
+            self.assertIn(f"HERMES_PARALLEL_REPLY_{index}", completed.stdout)
+            self.assertIn(f"HERMES_PARALLEL_DONE_{index}", completed.stdout)
+            for other_run_id in set(run_ids) - {run_id}:
+                self.assertNotIn(other_run_id, completed.stdout)
+
+    def test_hermes_link_cli_runs_parallel_employee_sets(self) -> None:
+        conversations = [
+            {
+                "sender": "hl_ceo",
+                "recipient": "hl_advisor",
+                "reply_marker": "HERMES_PARALLEL_EXEC_REPLY",
+                "done_marker": "HERMES_PARALLEL_EXEC_DONE",
+                "run_id": f"HERMES_PARALLEL_EXEC_{uuid.uuid4().hex}",
+            },
+            {
+                "sender": "hl_cto",
+                "recipient": "hl_backend_engineer",
+                "reply_marker": "HERMES_PARALLEL_ENG_REPLY",
+                "done_marker": "HERMES_PARALLEL_ENG_DONE",
+                "run_id": f"HERMES_PARALLEL_ENG_{uuid.uuid4().hex}",
+            },
+            {
+                "sender": "hl_product_manager",
+                "recipient": "hl_frontend_engineer",
+                "reply_marker": "HERMES_PARALLEL_PRODUCT_REPLY",
+                "done_marker": "HERMES_PARALLEL_PRODUCT_DONE",
+                "run_id": f"HERMES_PARALLEL_PRODUCT_{uuid.uuid4().hex}",
+            },
+        ]
+
+        def run_conversation(conversation: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "chat",
+                    conversation["sender"],
+                    f"Send exactly one message to {conversation['recipient']} asking it to reply normally "
+                    f"with {conversation['run_id']} and {conversation['reply_marker']}. When "
+                    f"{conversation['recipient']} replies, answer the user with {conversation['run_id']} "
+                    f"and {conversation['done_marker']}.",
+                    "--max-messages",
+                    "4",
+                    "--timeout",
+                    str(TIMEOUT_SECONDS),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS * 5,
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(conversations)) as executor:
+            futures = [executor.submit(run_conversation, conversation) for conversation in conversations]
+            completed_runs = [future.result(timeout=TIMEOUT_SECONDS * 6) for future in futures]
+
+        all_run_ids = {conversation["run_id"] for conversation in conversations}
+        for conversation, completed in zip(conversations, completed_runs):
+            if completed.returncode != 0:
+                raise AssertionError(
+                    f"parallel employee-set cli conversation failed with exit code {completed.returncode}\n"
+                    f"sender: {conversation['sender']}\n"
+                    f"recipient: {conversation['recipient']}\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}"
+                )
+            self.assertIn(f"{conversation['sender']} -> {conversation['recipient']}:", completed.stdout)
+            self.assertIn(f"{conversation['recipient']} -> {conversation['sender']}:", completed.stdout)
+            self.assertIn(conversation["run_id"], completed.stdout)
+            self.assertIn(conversation["reply_marker"], completed.stdout)
+            self.assertIn(conversation["done_marker"], completed.stdout)
+            for other_run_id in all_run_ids - {conversation["run_id"]}:
+                self.assertNotIn(other_run_id, completed.stdout)
 
     def test_hermes_link_cli_notifies_sender_when_policy_blocks_route(self) -> None:
         run_id = f"HERMES_POLICY_BLOCK_{uuid.uuid4().hex}"

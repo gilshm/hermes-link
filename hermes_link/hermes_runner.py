@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import re
 import shutil
 import subprocess
@@ -177,14 +178,15 @@ class HermesRunner:
             args.extend(["-r", self._sessions[agent]])
         args.extend(["-q", prompt])
 
-        completed = subprocess.run(
-            args,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=self._timeout,
-            cwd=self._cwd,
-        )
+        with self._agent_lock(agent):
+            completed = subprocess.run(
+                args,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout,
+                cwd=self._cwd,
+            )
         if completed.returncode != 0:
             raise RuntimeError(
                 f"{command} failed with exit code {completed.returncode}\n"
@@ -227,6 +229,9 @@ class HermesRunner:
         if match is None:
             raise RuntimeError(f"{command} sessions list did not include a session id:\n{completed.stdout}")
         return match.group(1)
+
+    def _agent_lock(self, agent: str) -> object:
+        return _AgentLock(self._cwd / ".hermes-link" / "locks" / f"{_safe_lock_name(agent)}.lock")
 
     def _agent_prompt(self, body: str, *, allow_tools: bool) -> str:
         agent_directory = self._agent_directory()
@@ -297,6 +302,29 @@ def _clean_response(output: str) -> str:
 
 def _normalize_body(body: str) -> str:
     return " ".join(body.casefold().split())
+
+
+class _AgentLock:
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._file = None
+
+    def __enter__(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = self._path.open("w", encoding="utf-8")
+        fcntl.flock(self._file.fileno(), fcntl.LOCK_EX)
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        if self._file is None:
+            return
+        try:
+            fcntl.flock(self._file.fileno(), fcntl.LOCK_UN)
+        finally:
+            self._file.close()
+
+
+def _safe_lock_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value)
 
 
 def _policy_denial(sender: str, recipient: str) -> str:
