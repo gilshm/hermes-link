@@ -10,18 +10,18 @@ class SessionMapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             session_map = SessionMap(Path(tmpdir) / "session-map.json")
 
-            self.assertIsNone(session_map.get(source_session_id="source-a", agent="agent_b"))
+            self.assertIsNone(session_map.get(source_session_id="source-a", agent="hl_advisor"))
             session_map.set(
                 source_session_id="source-a",
-                agent="agent_b",
+                agent="hl_advisor",
                 target_session_id="session-b",
             )
 
             self.assertEqual(
-                session_map.get(source_session_id="source-a", agent="agent_b"),
+                session_map.get(source_session_id="source-a", agent="hl_advisor"),
                 "session-b",
             )
-            self.assertEqual(session_map.entries(), [("source-a", "agent_b", "session-b")])
+            self.assertEqual(session_map.entries(), [("source-a", "hl_advisor", "session-b")])
 
 
 if __name__ == "__main__":

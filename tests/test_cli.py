@@ -15,19 +15,19 @@ class CliTests(unittest.TestCase):
     def test_log_command_prints_formatted_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "events.jsonl"
-            EventLog(path).write("message", thread_id="thread-1", from_agent="agent_a", to_agent="agent_b", body="hello")
+            EventLog(path).write("message", thread_id="thread-1", from_agent="hl_ceo", to_agent="hl_advisor", body="hello")
             output = io.StringIO()
 
             with mock.patch("sys.stdout", output):
                 exit_code = main(["log", "--path", str(path)])
 
         self.assertEqual(exit_code, 0)
-        self.assertIn("[thread-1] ├─ agent_a -> agent_b: hello", output.getvalue())
+        self.assertIn("[thread-1] ├─ hl_ceo -> hl_advisor: hello", output.getvalue())
 
     def test_log_command_can_force_color(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "events.jsonl"
-            EventLog(path).write("message", thread_id="thread-1", from_agent="agent_a", to_agent="agent_b", body="hello")
+            EventLog(path).write("message", thread_id="thread-1", from_agent="hl_ceo", to_agent="hl_advisor", body="hello")
             output = io.StringIO()
 
             with mock.patch("sys.stdout", output):
@@ -39,8 +39,8 @@ class CliTests(unittest.TestCase):
     def test_trace_command_prints_matching_thread(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "events.jsonl"
-            EventLog(path).write("message", thread_id="thread-1", from_agent="agent_a", to_agent="agent_b", body="hello")
-            EventLog(path).write("message", thread_id="thread-2", from_agent="agent_a", to_agent="agent_b", body="ignore")
+            EventLog(path).write("message", thread_id="thread-1", from_agent="hl_ceo", to_agent="hl_advisor", body="hello")
+            EventLog(path).write("message", thread_id="thread-2", from_agent="hl_ceo", to_agent="hl_advisor", body="ignore")
             output = io.StringIO()
 
             with mock.patch("sys.stdout", output):
@@ -54,25 +54,25 @@ class CliTests(unittest.TestCase):
     def test_sessions_command_prints_session_map(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "session-map.json"
-            path.write_text('{"source-a:agent_b": "session-b"}', encoding="utf-8")
+            path.write_text('{"source-a:hl_advisor": "session-b"}', encoding="utf-8")
             output = io.StringIO()
 
             with mock.patch("sys.stdout", output):
                 exit_code = main(["sessions", "--path", str(path)])
 
         self.assertEqual(exit_code, 0)
-        self.assertIn("source-a -> agent_b: session-b", output.getvalue())
+        self.assertIn("source-a -> hl_advisor: session-b", output.getvalue())
 
     def test_chat_command_labels_final_routed_reply(self) -> None:
         output = io.StringIO()
         result = ChatResult(
             transcript=[
-                Message("user", "agent_a", "start"),
-                Message("agent_a", "agent_b", "ping"),
+                Message("user", "hl_ceo", "start"),
+                Message("hl_ceo", "hl_advisor", "ping"),
             ],
             turns=[
-                AgentTurn("agent_a", "session-a", "SEND agent_b: ping"),
-                AgentTurn("agent_b", "session-b", "pong"),
+                AgentTurn("hl_ceo", "session-a", "SEND hl_advisor: ping"),
+                AgentTurn("hl_advisor", "session-b", "pong"),
             ],
             final_response="pong",
         )
@@ -84,11 +84,11 @@ class CliTests(unittest.TestCase):
             mock.patch("hermes_link.cli.HermesRunner") as runner,
         ):
             runner.return_value.chat.return_value = result
-            exit_code = main(["chat", "agent_a", "start"])
+            exit_code = main(["chat", "hl_ceo", "start"])
 
         self.assertEqual(exit_code, 0)
-        self.assertIn("agent_a -> agent_b: ping", output.getvalue())
-        self.assertIn("agent_b -> agent_a: pong", output.getvalue())
+        self.assertIn("hl_ceo -> hl_advisor: ping", output.getvalue())
+        self.assertIn("hl_advisor -> hl_ceo: pong", output.getvalue())
 
     def test_org_validate_command_reports_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -99,8 +99,8 @@ class CliTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
                         "    expertise: Coordinator",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
@@ -117,7 +117,7 @@ class CliTests(unittest.TestCase):
 
             with (
                 mock.patch("sys.stdout", output),
-                mock.patch("hermes_link.validation.shutil.which", return_value="/bin/agent_a"),
+                mock.patch("hermes_link.validation.shutil.which", return_value="/bin/hl_ceo"),
                 mock.patch("hermes_link.cli.REPO_ROOT", root),
             ):
                 exit_code = main(["org", "validate", "--org", str(org)])
@@ -134,8 +134,8 @@ class CliTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
                         "    expertise: Coordinator",
                     ]
                 ),
@@ -152,7 +152,7 @@ class CliTests(unittest.TestCase):
                 inspect.return_value.skill_installed = True
                 inspect.return_value.plugin_installed = True
                 inspect.return_value.plugin_enabled = True
-                inspect.return_value.agent.command = "agent_a"
+                inspect.return_value.agent.command = "hl_ceo"
                 inspect.return_value.agent.expertise = "Coordinator"
                 health.return_value.ok = True
                 health.return_value.response = "HERMES_LINK_HEALTH_OK"

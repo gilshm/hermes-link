@@ -5,7 +5,7 @@ keeping their own Hermes identities, sessions, and responsibilities.
 
 The core flow is:
 
-1. A user talks to an agent, usually `agent_a`.
+1. A user talks to an agent, usually `hl_ceo`.
 2. That agent decides whether another configured agent should help.
 3. Hermes Link delivers the message to the target agent and preserves the target
    agent's session for future messages in the same routed thread.
@@ -39,8 +39,9 @@ Installed pieces:
 Useful installer flags:
 
 ```bash
+python3 install.py --create-profiles --clone-from base
 python3 install.py --all
-python3 install.py --profile agent_a --profile agent_b
+python3 install.py --profile hl_ceo --profile hl_advisor
 python3 install.py --skip-wrapper
 python3 install.py --skip-skills
 python3 install.py --skip-plugin
@@ -58,23 +59,57 @@ bin/hermes_link org validate
 
 ```yaml
 agents:
-  agent_a:
-    command: agent_a
+  hl_ceo:
+    command: hl_ceo
+    title: CEO
+    team: executive
     expertise: >
-      General coordinator and first-contact agent.
-  agent_b:
-    command: agent_b
+      First-contact executive and final decision maker.
+  hl_advisor:
+    command: hl_advisor
+    title: Strategic Advisor
+    team: executive
+    manager: hl_ceo
     expertise: >
-      Second-opinion and review agent.
+      Independent senior advisor.
+  hl_cto:
+    command: hl_cto
+    title: CTO
+    team: executive
+    manager: hl_ceo
+    expertise: >
+      Technical executive.
+  hl_product_manager:
+    command: hl_product_manager
+    title: Product Manager
+    team: product
+    manager: hl_ceo
+    expertise: >
+      Product lead.
+  hl_backend_engineer:
+    command: hl_backend_engineer
+    title: Backend Engineer
+    team: engineering
+    manager: hl_cto
+    expertise: >
+      Backend implementation specialist.
+  hl_frontend_engineer:
+    command: hl_frontend_engineer
+    title: Frontend Engineer
+    team: engineering
+    manager: hl_cto
+    expertise: >
+      Frontend implementation specialist.
 
 topics:
   review:
-    default: agent_b
+    default: hl_advisor
     agents:
-      - agent_b
+      - hl_advisor
+      - hl_cto
 
 skill: skills/agent-comms/SKILL.md
-max_messages: 10
+max_messages: 12
 ```
 
 Agents can route directly to another agent id, or to a topic such as `@review`.
@@ -89,7 +124,7 @@ profile, and returns a transcript to the calling agent.
 The skill also documents a text fallback:
 
 ```text
-SEND agent_b: message
+SEND hl_advisor: message
 SEND @review: message
 ```
 
@@ -103,7 +138,7 @@ reply and resumes the originating agent so it can answer the user.
 Talk to an org agent through Hermes Link:
 
 ```bash
-bin/hermes_link chat agent_a "Ask agent_b for one short review, then answer me."
+bin/hermes_link chat hl_ceo "Ask hl_advisor for one short review, then answer me."
 ```
 
 Show configured agents and local install state:
@@ -169,9 +204,9 @@ Log output includes timestamps, thread ids, and branch markers so related
 messages line up:
 
 ```text
-2026-06-21 22:00:00 [abc123] ┌─ bridge agent_a -> agent_b: hi
-2026-06-21 22:00:01 [abc123] ├─ agent_b -> agent_a: hello
-2026-06-21 22:00:02 [abc123] └─ agent_a final: thanks
+2026-06-21 22:00:00 [abc123] ┌─ bridge hl_ceo -> hl_advisor: hi
+2026-06-21 22:00:01 [abc123] ├─ hl_advisor -> hl_ceo: hello
+2026-06-21 22:00:02 [abc123] └─ hl_ceo final: thanks
 ```
 
 ## Test
@@ -188,7 +223,7 @@ Run the live Hermes profile tests:
 HERMES_LINK_RUN_REAL_AGENTS=1 python -m unittest tests.test_real_hermes_agents -v
 ```
 
-The live tests require working `agent_a` and `agent_b` Hermes commands on `PATH`
+The live tests require working `hl_ceo` and `hl_advisor` Hermes commands on `PATH`
 with the plugin and skill installed.
 
 ## Code Shape

@@ -12,6 +12,9 @@ class AgentConfig:
     name: str
     command: str
     expertise: str
+    title: str = ""
+    team: str = ""
+    manager: str = ""
 
 
 @dataclass(frozen=True)
@@ -73,8 +76,28 @@ def _load_agents(raw: Any) -> dict[str, AgentConfig]:
         expertise = value.get("expertise", "")
         if not isinstance(expertise, str):
             raise ValueError(f"agent {name} expertise must be a string")
-        agents[name] = AgentConfig(name=name, command=command, expertise=expertise.strip())
+        title = _optional_string(value, "title", name)
+        team = _optional_string(value, "team", "")
+        manager = _optional_string(value, "manager", "")
+        agents[name] = AgentConfig(
+            name=name,
+            command=command,
+            expertise=expertise.strip(),
+            title=title.strip(),
+            team=team.strip(),
+            manager=manager.strip(),
+        )
+    unknown_managers = sorted({agent.manager for agent in agents.values() if agent.manager} - set(agents))
+    if unknown_managers:
+        raise ValueError(f"agent manager references unknown agent(s): {', '.join(unknown_managers)}")
     return agents
+
+
+def _optional_string(value: dict[str, Any], key: str, default: str) -> str:
+    raw = value.get(key, default)
+    if not isinstance(raw, str):
+        raise ValueError(f"agent {key} must be a string")
+    return raw
 
 
 def _load_topics(raw: Any, agents: dict[str, AgentConfig]) -> dict[str, TopicConfig]:

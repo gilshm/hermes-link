@@ -241,7 +241,14 @@ class HermesRunner:
         for name in sorted(self._org.agents):
             agent = self._org.agents[name]
             detail = agent.expertise or "No expertise description provided."
-            lines.append(f"- {name}: {detail}")
+            role = agent.title or name
+            hierarchy = []
+            if agent.team:
+                hierarchy.append(f"team={agent.team}")
+            if agent.manager:
+                hierarchy.append(f"manager={agent.manager}")
+            suffix = f" ({'; '.join(hierarchy)})" if hierarchy else ""
+            lines.append(f"- {name}: {role}{suffix}. {detail}")
         for name in sorted(self._org.topics):
             topic = self._org.topics[name]
             members = ", ".join(topic.agents)
@@ -259,6 +266,7 @@ def _clean_response(output: str) -> str:
         if line.strip()
         and not line.startswith("session_id:")
         and "Resumed session " not in line
+        and "tirith security scanner" not in line
     ]
     return "\n".join(lines).strip()
 

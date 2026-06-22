@@ -5,47 +5,47 @@ from hermes_link.demo import run_demo
 
 
 class RoundTripTests(unittest.TestCase):
-    def test_agent_a_sends_to_agent_b_and_agent_b_replies(self) -> None:
-        received_by_a: list[Message] = []
+    def test_hl_ceo_sends_to_advisor_and_advisor_replies(self) -> None:
+        received_by_hl_ceo: list[Message] = []
 
-        def agent_a(message: Message) -> None:
-            received_by_a.append(message)
+        def hl_ceo(message: Message) -> None:
+            received_by_hl_ceo.append(message)
             return None
 
-        def agent_b(message: Message) -> Message:
-            self.assertEqual(message, Message("agent_a", "agent_b", "ping"))
-            return Message("agent_b", "agent_a", "pong")
+        def hl_advisor(message: Message) -> Message:
+            self.assertEqual(message, Message("hl_ceo", "hl_advisor", "ping"))
+            return Message("hl_advisor", "hl_ceo", "pong")
 
         runtime = Runtime()
-        runtime.register(Agent("agent_a", agent_a))
-        runtime.register(Agent("agent_b", agent_b))
+        runtime.register(Agent("hl_ceo", hl_ceo))
+        runtime.register(Agent("hl_advisor", hl_advisor))
 
-        transcript = runtime.send(Message("agent_a", "agent_b", "ping"))
+        transcript = runtime.send(Message("hl_ceo", "hl_advisor", "ping"))
 
         self.assertEqual(
             transcript,
             [
-                Message("agent_a", "agent_b", "ping"),
-                Message("agent_b", "agent_a", "pong"),
+                Message("hl_ceo", "hl_advisor", "ping"),
+                Message("hl_advisor", "hl_ceo", "pong"),
             ],
         )
-        self.assertEqual(received_by_a, [Message("agent_b", "agent_a", "pong")])
+        self.assertEqual(received_by_hl_ceo, [Message("hl_advisor", "hl_ceo", "pong")])
 
     def test_demo_roundtrip(self) -> None:
         self.assertEqual(
             run_demo(),
             [
-                Message("agent_a", "agent_b", "ping"),
-                Message("agent_b", "agent_a", "pong"),
+                Message("hl_ceo", "hl_advisor", "ping"),
+                Message("hl_advisor", "hl_ceo", "pong"),
             ],
         )
 
     def test_unknown_agent_is_rejected(self) -> None:
         runtime = Runtime()
-        runtime.register(Agent("agent_a", lambda message: None))
+        runtime.register(Agent("hl_ceo", lambda message: None))
 
-        with self.assertRaisesRegex(ValueError, "unknown agent: agent_b"):
-            runtime.send(Message("agent_a", "agent_b", "ping"))
+        with self.assertRaisesRegex(ValueError, "unknown agent: hl_advisor"):
+            runtime.send(Message("hl_ceo", "hl_advisor", "ping"))
 
 
 if __name__ == "__main__":

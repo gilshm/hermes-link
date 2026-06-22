@@ -12,7 +12,7 @@ class ValidationTests(unittest.TestCase):
             root = Path(tmpdir)
             org = _write_repo(root, expertise="Coordinator")
 
-            with mock.patch("hermes_link.validation.shutil.which", return_value="/bin/agent_a"):
+            with mock.patch("hermes_link.validation.shutil.which", return_value="/bin/hl_ceo"):
                 errors = validate_org(org, repo_root=root)
 
         self.assertEqual(errors, [])
@@ -25,8 +25,8 @@ class ValidationTests(unittest.TestCase):
             with mock.patch("hermes_link.validation.shutil.which", return_value=None):
                 errors = validate_org(org, repo_root=root)
 
-        self.assertIn("agent agent_a is missing expertise", errors)
-        self.assertIn("agent agent_a command not found: agent_a", errors)
+        self.assertIn("agent hl_ceo is missing expertise", errors)
+        self.assertIn("agent hl_ceo command not found: hl_ceo", errors)
 
 
 def _write_repo(root: Path, *, expertise: str) -> Path:
@@ -42,8 +42,8 @@ def _write_repo(root: Path, *, expertise: str) -> Path:
         "\n".join(
             [
                 "agents:",
-                "  agent_a:",
-                "    command: agent_a",
+                "  hl_ceo:",
+                "    command: hl_ceo",
                 f'    expertise: "{expertise}"',
                 "skill: skills/agent-comms/SKILL.md",
             ]

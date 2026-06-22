@@ -13,8 +13,8 @@ from hermes_link.org import load_org
 class AgentCommsTests(unittest.TestCase):
     def test_parse_send_directive(self) -> None:
         self.assertEqual(
-            parse_send_directive("SEND agent_b: hello there"),
-            SendDirective("agent_b", "hello there"),
+            parse_send_directive("SEND hl_advisor: hello there"),
+            SendDirective("hl_advisor", "hello there"),
         )
         self.assertEqual(
             parse_send_directive("SEND @review: hello there"),
@@ -25,11 +25,18 @@ class AgentCommsTests(unittest.TestCase):
     def test_load_org(self) -> None:
         org = load_org(Path("config/org.yaml"))
 
-        self.assertEqual(set(org.agents), {"agent_a", "agent_b"})
-        self.assertEqual(org.agents["agent_a"].command, "agent_a")
-        self.assertIn("coordinator", org.agents["agent_a"].expertise)
-        self.assertIn("Second-opinion", org.agents["agent_b"].expertise)
-        self.assertEqual(org.resolve_agent("@review"), "agent_b")
+        self.assertEqual(
+            set(org.agents),
+            {"hl_ceo", "hl_advisor", "hl_cto", "hl_product_manager", "hl_backend_engineer", "hl_frontend_engineer"},
+        )
+        self.assertEqual(org.agents["hl_ceo"].command, "hl_ceo")
+        self.assertEqual(org.agents["hl_ceo"].title, "CEO")
+        self.assertEqual(org.agents["hl_advisor"].manager, "hl_ceo")
+        self.assertEqual(org.agents["hl_backend_engineer"].team, "engineering")
+        self.assertIn("decision maker", org.agents["hl_ceo"].expertise)
+        self.assertIn("second opinions", org.agents["hl_advisor"].expertise)
+        self.assertEqual(org.resolve_agent("@review"), "hl_advisor")
+        self.assertEqual(org.resolve_agent("@technical"), "hl_cto")
         self.assertEqual(org.skill_path.name, "SKILL.md")
 
     def test_runner_routes_send_directives_and_reuses_agent_sessions(self) -> None:
@@ -44,10 +51,10 @@ class AgentCommsTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
-                        "  agent_b:",
-                        "    command: agent_b",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
                         "skill: skills/agent-comms/SKILL.md",
                         "max_messages: 6",
                     ]
@@ -57,8 +64,8 @@ class AgentCommsTests(unittest.TestCase):
             org = load_org(org_path)
             calls: list[list[str]] = []
             outputs = [
-                "session_id: session-a\nSEND agent_b: one",
-                "session_id: session-b\nSEND agent_a: two",
+                "session_id: session-a\nSEND hl_advisor: one",
+                "session_id: session-b\nSEND hl_ceo: two",
                 "session_id: session-a\nfinal answer",
             ]
 
@@ -66,15 +73,18 @@ class AgentCommsTests(unittest.TestCase):
                 calls.append(args)
                 return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
 
-            with mock.patch("subprocess.run", side_effect=fake_run):
-                result = HermesRunner(org, cwd=root).chat("agent_a", "start")
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                result = HermesRunner(org, cwd=root).chat("hl_ceo", "start")
 
         self.assertEqual(
             result.transcript,
             [
-                Message("user", "agent_a", "start"),
-                Message("agent_a", "agent_b", "one"),
-                Message("agent_b", "agent_a", "two"),
+                Message("user", "hl_ceo", "start"),
+                Message("hl_ceo", "hl_advisor", "one"),
+                Message("hl_advisor", "hl_ceo", "two"),
             ],
         )
         self.assertEqual(result.final_response, "final answer")
@@ -95,10 +105,10 @@ class AgentCommsTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
-                        "  agent_b:",
-                        "    command: agent_b",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
                         "skill: skills/agent-comms/SKILL.md",
                         "max_messages: 4",
                     ]
@@ -108,7 +118,7 @@ class AgentCommsTests(unittest.TestCase):
             org = load_org(org_path)
             calls: list[list[str]] = []
             outputs = [
-                "session_id: session-a\nSEND agent_b: ping",
+                "session_id: session-a\nSEND hl_advisor: ping",
                 "session_id: session-b\npong",
                 "session_id: session-a\nfinal to user",
             ]
@@ -117,19 +127,22 @@ class AgentCommsTests(unittest.TestCase):
                 calls.append(args)
                 return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
 
-            with mock.patch("subprocess.run", side_effect=fake_run):
-                result = HermesRunner(org, cwd=root).chat("agent_a", "start")
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                result = HermesRunner(org, cwd=root).chat("hl_ceo", "start")
 
         self.assertEqual(
             result.transcript,
             [
-                Message("user", "agent_a", "start"),
-                Message("agent_a", "agent_b", "ping"),
-                Message("agent_b", "agent_a", "pong"),
+                Message("user", "hl_ceo", "start"),
+                Message("hl_ceo", "hl_advisor", "ping"),
+                Message("hl_advisor", "hl_ceo", "pong"),
             ],
         )
         self.assertEqual(result.final_response, "final to user")
-        self.assertEqual(calls[2][0], "agent_a")
+        self.assertEqual(calls[2][0], "hl_ceo")
         self.assertIn("-r", calls[2])
         self.assertEqual(calls[2][calls[2].index("-r") + 1], "session-a")
 
@@ -145,10 +158,10 @@ class AgentCommsTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
-                        "  agent_b:",
-                        "    command: agent_b",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
                 ),
@@ -159,16 +172,19 @@ class AgentCommsTests(unittest.TestCase):
 
             def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
                 calls.append(args)
-                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-b\nSEND agent_a: reply", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-b\nSEND hl_ceo: reply", stderr="")
 
-            with mock.patch("subprocess.run", side_effect=fake_run):
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
                 result = HermesRunner(org, cwd=root).chat(
-                    "agent_b",
+                    "hl_advisor",
                     "start",
-                    stop_recipient="agent_a",
+                    stop_recipient="hl_ceo",
                 )
 
-        self.assertEqual(result.transcript, [Message("user", "agent_b", "start"), Message("agent_b", "agent_a", "reply")])
+        self.assertEqual(result.transcript, [Message("user", "hl_advisor", "start"), Message("hl_advisor", "hl_ceo", "reply")])
         self.assertEqual(result.final_response, "reply")
         self.assertEqual(len(calls), 1)
 
@@ -184,10 +200,10 @@ class AgentCommsTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
-                        "  agent_b:",
-                        "    command: agent_b",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
                 ),
@@ -195,19 +211,20 @@ class AgentCommsTests(unittest.TestCase):
             )
             org = load_org(org_path)
             outputs = [
-                "session_id: session-a\nSEND agent_b: same message",
-                "session_id: session-b\nSEND agent_a: other message",
-                "session_id: session-a\nSEND agent_b:  SAME   message ",
+                "session_id: session-a\nSEND hl_advisor: same message",
+                "session_id: session-b\nSEND hl_ceo: other message",
+                "session_id: session-a\nSEND hl_advisor:  SAME   message ",
             ]
 
             def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
                 return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
 
             with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
                 mock.patch("subprocess.run", side_effect=fake_run),
                 self.assertRaisesRegex(RuntimeError, "repeated routed message"),
             ):
-                HermesRunner(org, cwd=root).chat("agent_a", "start")
+                HermesRunner(org, cwd=root).chat("hl_ceo", "start")
 
     def test_runner_can_request_one_send_directive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -221,10 +238,10 @@ class AgentCommsTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
-                        "  agent_b:",
-                        "    command: agent_b",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
                 ),
@@ -233,12 +250,15 @@ class AgentCommsTests(unittest.TestCase):
             org = load_org(org_path)
 
             def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND agent_b: hello", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND hl_advisor: hello", stderr="")
 
-            with mock.patch("subprocess.run", side_effect=fake_run):
-                routed = HermesRunner(org, cwd=root).request_send("agent_a", "say hello")
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                routed = HermesRunner(org, cwd=root).request_send("hl_ceo", "say hello")
 
-        self.assertEqual(routed.message, Message("agent_a", "agent_b", "hello"))
+        self.assertEqual(routed.message, Message("hl_ceo", "hl_advisor", "hello"))
         self.assertEqual(routed.turn.session_id, "session-a")
 
     def test_runner_rejects_missing_agent_command(self) -> None:
@@ -253,7 +273,7 @@ class AgentCommsTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
+                        "  hl_ceo:",
                         "    command: missing-agent-a",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
@@ -263,7 +283,7 @@ class AgentCommsTests(unittest.TestCase):
             org = load_org(org_path)
 
             with self.assertRaisesRegex(RuntimeError, "agent command not found"):
-                HermesRunner(org, cwd=root).request_send("agent_a", "hello")
+                HermesRunner(org, cwd=root).request_send("hl_ceo", "hello")
 
     def test_runner_resolves_topic_send_directive_to_default_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -277,15 +297,15 @@ class AgentCommsTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
-                        "  agent_b:",
-                        "    command: agent_b",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
                         "topics:",
                         "  review:",
-                        "    default: agent_b",
+                        "    default: hl_advisor",
                         "    agents:",
-                        "      - agent_b",
+                        "      - hl_advisor",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
                 ),
@@ -296,10 +316,13 @@ class AgentCommsTests(unittest.TestCase):
             def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
                 return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND @review: hello", stderr="")
 
-            with mock.patch("subprocess.run", side_effect=fake_run):
-                routed = HermesRunner(org, cwd=root).request_send("agent_a", "say hello")
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                routed = HermesRunner(org, cwd=root).request_send("hl_ceo", "say hello")
 
-        self.assertEqual(routed.message, Message("agent_a", "agent_b", "hello"))
+        self.assertEqual(routed.message, Message("hl_ceo", "hl_advisor", "hello"))
 
     def test_runner_includes_agent_expertise_in_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -313,11 +336,11 @@ class AgentCommsTests(unittest.TestCase):
                 "\n".join(
                     [
                         "agents:",
-                        "  agent_a:",
-                        "    command: agent_a",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
                         "    expertise: Coordinator",
-                        "  agent_b:",
-                        "    command: agent_b",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
                         "    expertise: Review specialist",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
@@ -329,13 +352,16 @@ class AgentCommsTests(unittest.TestCase):
 
             def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
                 prompts.append(args[-1])
-                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND agent_b: hello", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND hl_advisor: hello", stderr="")
 
-            with mock.patch("subprocess.run", side_effect=fake_run):
-                HermesRunner(org, cwd=root).request_send("agent_a", "say hello")
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                HermesRunner(org, cwd=root).request_send("hl_ceo", "say hello")
 
-        self.assertIn("- agent_a: Coordinator", prompts[0])
-        self.assertIn("- agent_b: Review specialist", prompts[0])
+        self.assertIn("- hl_ceo: hl_ceo. Coordinator", prompts[0])
+        self.assertIn("- hl_advisor: hl_advisor. Review specialist", prompts[0])
 
 
 if __name__ == "__main__":

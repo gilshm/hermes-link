@@ -27,8 +27,8 @@ SEND agent_id: message
 Examples:
 
 ```text
-SEND agent_b: Please review this idea and respond to agent_a.
-SEND agent_a: I reviewed it. The smallest next step is clear.
+SEND hl_advisor: Please review this idea and respond to hl_ceo.
+SEND hl_ceo: I reviewed it. The smallest next step is clear.
 ```
 
 Rules:

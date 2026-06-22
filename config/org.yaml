@@ -1,22 +1,86 @@
 agents:
-  agent_a:
-    command: agent_a
+  hl_ceo:
+    command: hl_ceo
+    title: CEO
+    team: executive
     expertise: >
-      General coordinator and first-contact agent. Good for understanding the
-      user's request, deciding whether another agent should help, and combining
-      replies into a concise final answer.
-  agent_b:
-    command: agent_b
+      First-contact executive and final decision maker. Good for understanding
+      the user's goal, delegating to the right employee, resolving tradeoffs,
+      and synthesizing a concise final answer.
+  hl_advisor:
+    command: hl_advisor
+    title: Strategic Advisor
+    team: executive
+    manager: hl_ceo
     expertise: >
-      Second-opinion and review agent. Good for answering delegated questions,
-      sanity-checking ideas, spotting gaps, and giving a brief independent
-      response back to agent_a.
+      Independent senior advisor. Good for second opinions, risk spotting,
+      strategy critique, and challenging assumptions before the CEO decides.
+  hl_cto:
+    command: hl_cto
+    title: CTO
+    team: executive
+    manager: hl_ceo
+    expertise: >
+      Technical executive. Good for architecture direction, engineering
+      tradeoffs, technical feasibility, and deciding what the engineering team
+      should do next.
+  hl_product_manager:
+    command: hl_product_manager
+    title: Product Manager
+    team: product
+    manager: hl_ceo
+    expertise: >
+      Product lead. Good for user needs, prioritization, requirements, scope,
+      acceptance criteria, and turning vague ideas into concrete product work.
+  hl_backend_engineer:
+    command: hl_backend_engineer
+    title: Backend Engineer
+    team: engineering
+    manager: hl_cto
+    expertise: >
+      Backend implementation specialist. Good for APIs, data models, services,
+      reliability, integrations, and server-side debugging.
+  hl_frontend_engineer:
+    command: hl_frontend_engineer
+    title: Frontend Engineer
+    team: engineering
+    manager: hl_cto
+    expertise: >
+      Frontend implementation specialist. Good for UI behavior, workflows,
+      client-side architecture, accessibility, and user-facing polish.
 
 topics:
-  review:
-    default: agent_b
+  strategy:
+    default: hl_advisor
     agents:
-      - agent_b
+      - hl_advisor
+      - hl_ceo
+  technical:
+    default: hl_cto
+    agents:
+      - hl_cto
+      - hl_backend_engineer
+      - hl_frontend_engineer
+  product:
+    default: hl_product_manager
+    agents:
+      - hl_product_manager
+      - hl_advisor
+  backend:
+    default: hl_backend_engineer
+    agents:
+      - hl_backend_engineer
+      - hl_cto
+  frontend:
+    default: hl_frontend_engineer
+    agents:
+      - hl_frontend_engineer
+      - hl_cto
+  review:
+    default: hl_advisor
+    agents:
+      - hl_advisor
+      - hl_cto
 
 skill: skills/agent-comms/SKILL.md
-max_messages: 10
+max_messages: 12

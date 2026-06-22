@@ -26,14 +26,15 @@ class BridgeRunnerTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
 
             payload = {
-                "from_agent": "agent_a",
-                "to": "agent_b",
+                "from_agent": "hl_ceo",
+                "to": "hl_advisor",
                 "body": "hello",
                 "source_session_id": "session-a",
             }
             with (
                 mock.patch("sys.stdin.read", return_value=json.dumps(payload)),
                 mock.patch.dict(os.environ, {"HERMES_LINK_HOME": str(root), "HERMES_LINK_STATE_DIR": str(root / "state")}),
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
                 mock.patch("subprocess.run", side_effect=fake_run),
                 mock.patch.object(sys, "stdout", new_callable=_Capture) as output,
             ):
@@ -48,7 +49,7 @@ class BridgeRunnerTests(unittest.TestCase):
             self.assertIn('"event": "final"', events)
             self.assertIn('"thread_id": "session-a"', events)
             self.assertIn("Hermes Link transcript:", output.value)
-            self.assertIn("Final from agent_b:", output.value)
+            self.assertIn("Final from hl_advisor:", output.value)
 
 
 class _Capture:
@@ -73,10 +74,10 @@ def _write_repo_shape(root: Path) -> None:
         "\n".join(
             [
                 "agents:",
-                "  agent_a:",
-                "    command: agent_a",
-                "  agent_b:",
-                "    command: agent_b",
+                "  hl_ceo:",
+                "    command: hl_ceo",
+                "  hl_advisor:",
+                "    command: hl_advisor",
                 "skill: skills/agent-comms/SKILL.md",
             ]
         ),

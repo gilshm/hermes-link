@@ -30,9 +30,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-plugin", action="store_true")
     parser.add_argument("--skip-plugin-enable", action="store_true")
     parser.add_argument("--skip-wrapper", action="store_true")
+    parser.add_argument("--create-profiles", action="store_true", help="Create missing Hermes profiles from org.yaml first.")
+    parser.add_argument("--clone-from", help="Profile to clone when creating missing org profiles.")
     args = parser.parse_args(argv)
 
     org = load_org(args.org)
+    if args.create_profiles:
+        for created in create_profiles_from_org(
+            org,
+            hermes_home=args.hermes_home,
+            clone_from=args.clone_from,
+        ):
+            print(created)
+
     profiles = select_profiles(
         hermes_home=args.hermes_home,
         requested=args.profiles,
@@ -65,7 +75,8 @@ def main(argv: list[str] | None = None) -> int:
                 enable_plugin(profile=profile, plugin_name="hermes-link")
                 print(f"enabled plugin for {profile}: hermes-link")
 
-    print("run mediated chats with: bin/hermes_link chat agent_a \"...\"")
+    first_agent = next(iter(org.agents))
+    print(f"run mediated chats with: bin/hermes_link chat {first_agent} \"...\"")
     return 0
 
 
@@ -85,6 +96,34 @@ def install_wrapper(repo_root: Path) -> Path:
     mode = wrapper.stat().st_mode
     wrapper.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return wrapper
+
+
+def create_profiles_from_org(org, *, hermes_home: Path, clone_from: str | None = None) -> list[str]:
+    results: list[str] = []
+    for name in sorted(org.agents):
+        agent = org.agents[name]
+        profile = agent.command
+        if (hermes_home / "profiles" / profile).exists():
+            results.append(f"profile exists: {profile}")
+            continue
+        args = ["hermes", "profile", "create"]
+        if clone_from:
+            args.extend(["--clone-from", clone_from])
+        else:
+            args.append("--clone")
+        description = _profile_description(agent)
+        if description:
+            args.extend(["--description", description])
+        args.append(profile)
+        completed = subprocess.run(args, check=False, capture_output=True, text=True)
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"failed to create Hermes profile {profile}\n"
+                f"stdout:\n{completed.stdout}\n"
+                f"stderr:\n{completed.stderr}"
+            )
+        results.append(f"created profile: {profile}")
+    return results
 
 
 def install_skill(*, skill_path: Path, hermes_home: Path, profile: str) -> Path:
@@ -186,6 +225,17 @@ def _validate_requested_profiles(requested: list[str], available: list[str]) -> 
     missing = sorted(set(requested) - set(available))
     if missing:
         raise ValueError(f"unknown Hermes profile(s): {', '.join(missing)}")
+
+
+def _profile_description(agent) -> str:
+    parts = []
+    if agent.title:
+        parts.append(agent.title)
+    if agent.team:
+        parts.append(f"{agent.team} team")
+    if agent.expertise:
+        parts.append(agent.expertise)
+    return " ".join(parts)
 
 
 if __name__ == "__main__":

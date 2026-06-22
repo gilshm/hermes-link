@@ -106,6 +106,7 @@ def _clean_health_output(output: str) -> str:
         if line.strip()
         and not line.startswith("session_id:")
         and "Resumed session " not in line
+        and "tirith security scanner" not in line
     ]
     return "\n".join(lines).strip()
 

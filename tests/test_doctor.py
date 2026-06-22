@@ -12,26 +12,26 @@ class DoctorTests(unittest.TestCase):
             root = Path(tmpdir)
             hermes_home = root / "hermes"
             org = _write_repo(root)
-            (hermes_home / "profiles" / "agent_a" / "skills" / "agent-comms").mkdir(parents=True)
-            (hermes_home / "profiles" / "agent_a" / "skills" / "agent-comms" / "SKILL.md").write_text(
+            (hermes_home / "profiles" / "hl_ceo" / "skills" / "agent-comms").mkdir(parents=True)
+            (hermes_home / "profiles" / "hl_ceo" / "skills" / "agent-comms" / "SKILL.md").write_text(
                 "skill",
                 encoding="utf-8",
             )
-            (hermes_home / "profiles" / "agent_a" / "plugins" / "hermes-link").mkdir(parents=True)
-            (hermes_home / "profiles" / "agent_a" / "plugins" / "hermes-link" / "plugin.yaml").write_text(
+            (hermes_home / "profiles" / "hl_ceo" / "plugins" / "hermes-link").mkdir(parents=True)
+            (hermes_home / "profiles" / "hl_ceo" / "plugins" / "hermes-link" / "plugin.yaml").write_text(
                 "name: hermes-link",
                 encoding="utf-8",
             )
 
             with (
-                mock.patch("hermes_link.validation.shutil.which", return_value="/bin/agent_a"),
-                mock.patch("hermes_link.status.shutil.which", return_value="/bin/agent_a"),
+                mock.patch("hermes_link.validation.shutil.which", return_value="/bin/hl_ceo"),
+                mock.patch("hermes_link.status.shutil.which", return_value="/bin/hl_ceo"),
                 mock.patch("hermes_link.status._plugin_enabled", return_value=True),
             ):
                 checks = run_doctor(org_path=org, repo_root=root, hermes_home=hermes_home)
 
         self.assertTrue(all(check.ok for check in checks))
-        self.assertEqual([check.name for check in checks], ["org config", "state dir", "agent agent_a"])
+        self.assertEqual([check.name for check in checks], ["org config", "state dir", "agent hl_ceo"])
 
 
 def _write_repo(root: Path) -> Path:
@@ -47,8 +47,8 @@ def _write_repo(root: Path) -> Path:
         "\n".join(
             [
                 "agents:",
-                "  agent_a:",
-                "    command: agent_a",
+                "  hl_ceo:",
+                "    command: hl_ceo",
                 "    expertise: Coordinator",
                 "skill: skills/agent-comms/SKILL.md",
             ]
