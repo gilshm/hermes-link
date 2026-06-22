@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from hermes_link.doctor import run_doctor
 from hermes_link.hermes_runner import HermesRunner
-from hermes_link.log import EventLog, default_log_path, format_event, format_trace, iter_events, trace_events
+from hermes_link.log import EventLog, default_log_path, format_event, format_trace, format_trace_mermaid, iter_events, trace_events
 from hermes_link.org import OrgConfig, load_org
 from hermes_link.session_map import SessionMap
 from hermes_link.status import check_agent_health, inspect_agent, yes_no
@@ -40,6 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     trace = subparsers.add_parser("trace", help="Show one routed conversation trace")
     trace.add_argument("thread_id")
     trace.add_argument("--path", type=Path, default=default_log_path(REPO_ROOT))
+    trace.add_argument("--format", choices=["text", "mermaid"], default="text")
     trace.add_argument("--color", choices=["auto", "always", "never"], default="auto")
 
     agents = subparsers.add_parser("agents", help="Show configured org agents")
@@ -103,7 +104,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "trace":
         color = _use_color(args.color)
-        print(format_trace(trace_events(args.path, args.thread_id), thread_id=args.thread_id, color=color))
+        events = trace_events(args.path, args.thread_id)
+        if args.format == "mermaid":
+            print(format_trace_mermaid(events, thread_id=args.thread_id))
+        else:
+            print(format_trace(events, thread_id=args.thread_id, color=color))
         return 0
     if args.command == "agents":
         org = load_org(args.org)

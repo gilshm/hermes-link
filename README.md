@@ -311,6 +311,12 @@ Show one conversation trace by thread id or source session id:
 bin/hermes_link trace <thread_id>
 ```
 
+Export the same trace as a Mermaid sequence diagram:
+
+```bash
+bin/hermes_link trace <thread_id> --format mermaid
+```
+
 Watch messages live:
 
 ```bash

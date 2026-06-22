@@ -104,6 +104,19 @@ def format_trace(events: list[dict[str, Any]], *, thread_id: str, color: bool = 
     return "\n".join(lines)
 
 
+def format_trace_mermaid(events: list[dict[str, Any]], *, thread_id: str) -> str:
+    if not events:
+        return f"%% No events found for trace: {thread_id}"
+
+    participants = _trace_participants(events)
+    lines = ["sequenceDiagram", f"    %% Trace {thread_id}"]
+    for participant in participants:
+        lines.append(f"    participant {_mermaid_id(participant)} as {participant}")
+    for event in events:
+        lines.extend(_format_mermaid_event(event))
+    return "\n".join(lines)
+
+
 def _format_timestamp(value: Any) -> str:
     if isinstance(value, int | float):
         return datetime.fromtimestamp(value).strftime("%Y-%m-%d %H:%M:%S")
@@ -123,6 +136,55 @@ def _matches_thread(event: dict[str, Any], thread_id: str) -> bool:
         str(event.get("source_session_id") or ""),
     ]
     return any(candidate == thread_id or candidate.endswith(thread_id) for candidate in candidates if candidate)
+
+
+def _trace_participants(events: list[dict[str, Any]]) -> list[str]:
+    participants: set[str] = set()
+    for event in events:
+        for key in ("from_agent", "to_agent", "agent"):
+            value = event.get(key)
+            if isinstance(value, str) and value:
+                participants.add(value)
+    return sorted(participants)
+
+
+def _format_mermaid_event(event: dict[str, Any]) -> list[str]:
+    kind = event.get("event")
+    if kind == "bridge_request":
+        return [_mermaid_message(event.get("from_agent"), event.get("to_agent"), f"bridge: {event.get('body', '')}", arrow="->>")]
+    if kind == "message":
+        return [_mermaid_message(event.get("from_agent"), event.get("to_agent"), event.get("body", ""), arrow="->>")]
+    if kind == "handoff":
+        return [_mermaid_message(event.get("from_agent"), event.get("to_agent"), f"handoff: {event.get('body', '')}", arrow="->>")]
+    if kind == "scatter_start":
+        recipients = ", ".join(event.get("recipients", []))
+        return [f"    Note over {_mermaid_id(event.get('from_agent'))}: scatter to [{_mermaid_text(recipients)}]"]
+    if kind == "scatter_message":
+        return [_mermaid_message(event.get("from_agent"), event.get("to_agent"), event.get("body", ""), arrow="->>")]
+    if kind == "scatter_result":
+        return [_mermaid_message(event.get("from_agent"), event.get("to_agent"), event.get("body", ""), arrow="-->>")]
+    if kind == "scatter_error":
+        return [_mermaid_message(event.get("from_agent"), event.get("to_agent"), f"failed: {event.get('reason', '')}", arrow="-x")]
+    if kind == "blocked":
+        return [_mermaid_message(event.get("from_agent"), event.get("to_agent"), f"blocked: {event.get('reason', '')}", arrow="-x")]
+    if kind == "final":
+        agent = _mermaid_id(event.get("agent"))
+        return [f"    Note over {agent}: final: {_mermaid_text(event.get('body', ''))}"]
+    return [f"    Note over {_mermaid_id(event.get('agent') or event.get('from_agent') or 'unknown')}: {_mermaid_text(json.dumps(event, sort_keys=True))}"]
+
+
+def _mermaid_message(sender: Any, recipient: Any, body: Any, *, arrow: str) -> str:
+    return f"    {_mermaid_id(sender)}{arrow}{_mermaid_id(recipient)}: {_mermaid_text(body)}"
+
+
+def _mermaid_id(value: Any) -> str:
+    text = str(value or "unknown")
+    return "".join(char if char.isalnum() else "_" for char in text)
+
+
+def _mermaid_text(value: Any) -> str:
+    text = " ".join(str(value or "").split())
+    return text.replace("\\", "\\\\").replace(":", "#58;")
 
 
 def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) -> str:

@@ -53,6 +53,19 @@ class CliTests(unittest.TestCase):
         self.assertIn("hello", output.getvalue())
         self.assertNotIn("ignore", output.getvalue())
 
+    def test_trace_command_can_print_mermaid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            EventLog(path).write("message", thread_id="thread-1", from_agent="hl_ceo", to_agent="hl_advisor", body="hello")
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(["trace", "thread-1", "--path", str(path), "--format", "mermaid"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("sequenceDiagram", output.getvalue())
+        self.assertIn("hl_ceo->>hl_advisor: hello", output.getvalue())
+
     def test_sessions_command_prints_session_map(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "session-map.json"

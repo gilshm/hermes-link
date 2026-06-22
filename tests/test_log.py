@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hermes_link.log import EventLog, format_event, format_trace, iter_events, trace_events
+from hermes_link.log import EventLog, format_event, format_trace, format_trace_mermaid, iter_events, trace_events
 
 
 class LogTests(unittest.TestCase):
@@ -121,6 +121,56 @@ class LogTests(unittest.TestCase):
 
         self.assertIn("handoff hl_ceo -> hl_cto: take over", formatted_event)
         self.assertIn("handoff hl_ceo(12345678) -> hl_cto(87654321): take over", formatted_trace)
+
+    def test_trace_formats_mermaid_sequence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            log = EventLog(path)
+            log.write("bridge_request", thread_id="thread-a", from_agent="hl_ceo", to_agent="hl_cto", body="ask team")
+            log.write("handoff", thread_id="thread-a", from_agent="hl_ceo", to_agent="hl_cto", body="take over")
+            log.write("scatter_start", thread_id="thread-a", from_agent="hl_cto", recipients=["hl_backend_engineer"])
+            log.write(
+                "scatter_message",
+                thread_id="thread-a",
+                from_agent="hl_cto",
+                to_agent="hl_backend_engineer",
+                body="status: now",
+            )
+            log.write(
+                "scatter_result",
+                thread_id="thread-a",
+                from_agent="hl_backend_engineer",
+                to_agent="hl_cto",
+                body="ready",
+            )
+            log.write(
+                "blocked",
+                thread_id="thread-a",
+                from_agent="hl_cto",
+                to_agent="hl_advisor",
+                reason="policy blocked",
+            )
+            log.write("final", thread_id="thread-a", agent="hl_cto", body="done")
+
+            formatted = format_trace_mermaid(trace_events(path, "thread-a"), thread_id="thread-a")
+
+        self.assertIn("sequenceDiagram", formatted)
+        self.assertIn("%% Trace thread-a", formatted)
+        self.assertIn("participant hl_ceo as hl_ceo", formatted)
+        self.assertIn("participant hl_backend_engineer as hl_backend_engineer", formatted)
+        self.assertIn("hl_ceo->>hl_cto: bridge#58; ask team", formatted)
+        self.assertIn("hl_ceo->>hl_cto: handoff#58; take over", formatted)
+        self.assertIn("Note over hl_cto: scatter to [hl_backend_engineer]", formatted)
+        self.assertIn("hl_cto->>hl_backend_engineer: status#58; now", formatted)
+        self.assertIn("hl_backend_engineer-->>hl_cto: ready", formatted)
+        self.assertIn("hl_cto-xhl_advisor: blocked#58; policy blocked", formatted)
+        self.assertIn("Note over hl_cto: final: done", formatted)
+
+    def test_empty_mermaid_trace_reports_comment(self) -> None:
+        self.assertEqual(
+            format_trace_mermaid([], thread_id="missing"),
+            "%% No events found for trace: missing",
+        )
 
 
 if __name__ == "__main__":
