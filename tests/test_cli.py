@@ -2,6 +2,7 @@ import io
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from hermes_link.cli import main
@@ -162,6 +163,19 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("health: ok", output.getvalue())
         self.assertIn("HERMES_LINK_HEALTH_OK", output.getvalue())
+
+    def test_doctor_command_returns_failure_for_failed_check(self) -> None:
+        output = io.StringIO()
+
+        with (
+            mock.patch("sys.stdout", output),
+            mock.patch("hermes_link.cli.run_doctor") as doctor,
+        ):
+            doctor.return_value = [SimpleNamespace(ok=False, name="org config", detail="missing")]
+            exit_code = main(["doctor"])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("FAIL org config: missing", output.getvalue())
 
 
 if __name__ == "__main__":

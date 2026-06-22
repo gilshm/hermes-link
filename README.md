@@ -130,6 +130,13 @@ Validate the org config:
 bin/hermes_link org validate
 ```
 
+Run the install/config doctor:
+
+```bash
+bin/hermes_link doctor
+bin/hermes_link doctor --check-agents
+```
+
 ## Logs
 
 Hermes Link writes routed events to `.hermes-link/events.jsonl`.

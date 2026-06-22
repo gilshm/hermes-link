@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+from hermes_link.doctor import run_doctor
 from hermes_link.hermes_runner import HermesRunner
 from hermes_link.log import EventLog, default_log_path, format_event, format_trace, iter_events, trace_events
 from hermes_link.org import load_org
@@ -47,6 +48,12 @@ def main(argv: list[str] | None = None) -> int:
 
     sessions = subparsers.add_parser("sessions", help="Show Hermes Link session mappings")
     sessions.add_argument("--path", type=Path, default=REPO_ROOT / ".hermes-link" / "session-map.json")
+
+    doctor = subparsers.add_parser("doctor", help="Check Hermes Link config and install state")
+    doctor.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
+    doctor.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
+    doctor.add_argument("--check-agents", action="store_true", help="Run live smoke prompts for configured agents")
+    doctor.add_argument("--timeout", type=int, default=30)
 
     org_parser = subparsers.add_parser("org", help="Org configuration commands")
     org_subparsers = org_parser.add_subparsers(dest="org_command", required=True)
@@ -102,6 +109,17 @@ def main(argv: list[str] | None = None) -> int:
                 if detail:
                     print(f"  health detail: {detail}")
         return 0
+    if args.command == "doctor":
+        checks = run_doctor(
+            org_path=args.org,
+            repo_root=REPO_ROOT,
+            hermes_home=args.hermes_home,
+            check_agents=args.check_agents,
+            timeout=args.timeout,
+        )
+        for check in checks:
+            print(f"{'OK' if check.ok else 'FAIL'} {check.name}: {check.detail}")
+        return 0 if all(check.ok for check in checks) else 1
     if args.command == "sessions":
         entries = SessionMap(args.path).entries()
         if not entries:
