@@ -512,12 +512,13 @@ class RealHermesAgentTests(unittest.TestCase):
                     "hermes_link.cli",
                     "chat",
                     "hl_advisor",
-                    "Output exactly one Hermes Link SEND directive and no extra text: "
-                    f"SEND hl_backend_engineer: {run_id}",
+                    "Your entire response must be exactly this one Hermes Link SEND directive and no extra text. "
+                    "Do not route through another agent. Do not use HANDOFF. Do not use SEND_ALL. "
+                    f"Output exactly: SEND hl_backend_engineer: {run_id}",
                     "--org",
                     str(org),
                     "--max-messages",
-                    "2",
+                    "6",
                     "--timeout",
                     str(TIMEOUT_SECONDS),
                 ],
