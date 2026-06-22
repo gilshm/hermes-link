@@ -62,6 +62,9 @@ def format_event(event: dict[str, Any], *, color: bool = False) -> str:
             f"{_paint(prefix, '90', color)} {_paint('┌─', '33', color)} {arrow}: "
             f"{event.get('body', '')}"
         )
+    if kind == "blocked":
+        arrow = _paint(f"blocked {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
+        return f"{_paint(prefix, '90', color)} {_paint('!─', '31', color)} {arrow}: {event.get('reason', '')}"
     return json.dumps(event, sort_keys=True)
 
 
@@ -117,6 +120,9 @@ def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) ->
     if kind == "final":
         agent = _paint(f"{event.get('agent', '?')} final{_session_suffix(event.get('session_id'))}", "32", color)
         return f"{timestamp} {connector} {agent}: {event.get('body', '')}"
+    if kind == "blocked":
+        route = _paint(f"blocked {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
+        return f"{timestamp} {connector} {route}: {event.get('reason', '')}"
     return f"{timestamp} {connector} {json.dumps(event, sort_keys=True)}"
 
 

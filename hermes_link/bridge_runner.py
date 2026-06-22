@@ -25,6 +25,19 @@ def main() -> int:
     thread_id = source_session_id or str(payload.get("thread_id") or "").strip() or "adhoc"
     state_dir = _state_dir(repo_root)
     event_log = EventLog(_log_path(repo_root, state_dir))
+    if not org.can_route(from_agent, to_agent):
+        denial = _policy_denial(from_agent, to_agent)
+        event_log.write(
+            "blocked",
+            thread_id=thread_id,
+            from_agent=from_agent,
+            to_agent=to_agent,
+            source_session_id=source_session_id,
+            body=body,
+            reason=denial,
+        )
+        print(denial)
+        return 0
     event_log.write(
         "bridge_request",
         thread_id=thread_id,
@@ -70,6 +83,13 @@ def _required(payload: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"missing required field: {key}")
     return value.strip()
+
+
+def _policy_denial(sender: str, recipient: str) -> str:
+    return (
+        "Hermes Link routing policy blocked this message: "
+        f"{sender} is not allowed to send messages to {recipient}."
+    )
 
 
 def _format_transcript(result, *, final_agent: str) -> str:

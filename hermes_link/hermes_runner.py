@@ -118,6 +118,17 @@ class HermesRunner:
                 return ChatResult(transcript, turns, turn.response)
 
             recipient = self._resolve_agent(directive.recipient)
+            if not self._org.can_route(current_agent, recipient):
+                denial = _policy_denial(current_agent, recipient)
+                self._log(
+                    "blocked",
+                    from_agent=current_agent,
+                    to_agent=recipient,
+                    from_session_id=turn.session_id,
+                    body=directive.body,
+                    reason=denial,
+                )
+                return ChatResult(transcript, turns, denial)
             transcript.append(Message(current_agent, recipient, directive.body))
             self._log(
                 "message",
@@ -150,6 +161,8 @@ class HermesRunner:
         if directive is None:
             raise RuntimeError(f"{agent} did not emit a SEND directive:\n{turn.response}")
         recipient = self._resolve_agent(directive.recipient)
+        if not self._org.can_route(agent, recipient):
+            raise RuntimeError(_policy_denial(agent, recipient))
         return RoutedSend(
             message=Message(agent, recipient, directive.body),
             turn=turn,
@@ -273,3 +286,10 @@ def _clean_response(output: str) -> str:
 
 def _normalize_body(body: str) -> str:
     return " ".join(body.casefold().split())
+
+
+def _policy_denial(sender: str, recipient: str) -> str:
+    return (
+        "Hermes Link routing policy blocked this message: "
+        f"{sender} is not allowed to send messages to {recipient}."
+    )

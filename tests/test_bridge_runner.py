@@ -51,6 +51,26 @@ class BridgeRunnerTests(unittest.TestCase):
             self.assertIn("Hermes Link transcript:", output.value)
             self.assertIn("Final from hl_advisor:", output.value)
 
+    def test_bridge_reports_policy_block_to_sender(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_repo_shape(root, policy_block=True)
+            payload = {
+                "from_agent": "hl_ceo",
+                "to": "hl_advisor",
+                "body": "hello",
+                "source_session_id": "session-a",
+            }
+            with (
+                mock.patch("sys.stdin.read", return_value=json.dumps(payload)),
+                mock.patch.dict(os.environ, {"HERMES_LINK_HOME": str(root), "HERMES_LINK_STATE_DIR": str(root / "state")}),
+                mock.patch.object(sys, "stdout", new_callable=_Capture) as output,
+            ):
+                bridge_runner.main()
+
+            self.assertIn("routing policy blocked", output.value)
+            self.assertFalse((root / "state" / "session-map.json").exists())
+
 
 class _Capture:
     def __init__(self) -> None:
@@ -64,25 +84,30 @@ class _Capture:
         return None
 
 
-def _write_repo_shape(root: Path) -> None:
+def _write_repo_shape(root: Path, *, policy_block: bool = False) -> None:
     skill = root / "skills" / "agent-comms" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text("Use SEND agent_id: message.", encoding="utf-8")
     config = root / "config" / "org.yaml"
     config.parent.mkdir()
-    config.write_text(
-        "\n".join(
+    lines = [
+        "agents:",
+        "  hl_ceo:",
+        "    command: hl_ceo",
+        "  hl_advisor:",
+        "    command: hl_advisor",
+    ]
+    if policy_block:
+        lines.extend(
             [
-                "agents:",
-                "  hl_ceo:",
-                "    command: hl_ceo",
-                "  hl_advisor:",
-                "    command: hl_advisor",
-                "skill: skills/agent-comms/SKILL.md",
+                "routing:",
+                "  deny:",
+                "    hl_ceo:",
+                "      - hl_advisor",
             ]
-        ),
-        encoding="utf-8",
-    )
+        )
+    lines.append("skill: skills/agent-comms/SKILL.md")
+    config.write_text("\n".join(lines), encoding="utf-8")
 
 
 if __name__ == "__main__":

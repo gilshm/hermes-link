@@ -226,6 +226,89 @@ class AgentCommsTests(unittest.TestCase):
             ):
                 HermesRunner(org, cwd=root).chat("hl_ceo", "start")
 
+    def test_runner_notifies_sender_when_policy_blocks_route(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
+                        "routing:",
+                        "  deny:",
+                        "    hl_ceo:",
+                        "      - hl_advisor",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            calls: list[list[str]] = []
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                calls.append(args)
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: session-a\nSEND hl_advisor: secret", stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                result = HermesRunner(org, cwd=root).chat("hl_ceo", "start")
+
+        self.assertEqual(len(calls), 1)
+        self.assertIn("routing policy blocked", result.final_response)
+        self.assertIn("hl_ceo is not allowed to send messages to hl_advisor", result.final_response)
+        self.assertEqual(result.transcript, [Message("user", "hl_ceo", "start")])
+
+    def test_routing_policy_can_default_deny_with_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "routing:",
+                        "  default: deny",
+                        "  allow:",
+                        "    hl_ceo:",
+                        "      - hl_advisor",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+
+        self.assertTrue(org.can_route("hl_ceo", "hl_advisor"))
+        self.assertFalse(org.can_route("hl_advisor", "hl_ceo"))
+        self.assertFalse(org.can_route("hl_ceo", "hl_cto"))
+
+    def test_routing_policy_defaults_to_flat_org(self) -> None:
+        org = load_org(Path("config/org.yaml"))
+
+        self.assertTrue(org.can_route("hl_backend_engineer", "hl_ceo"))
+        self.assertTrue(org.can_route("hl_frontend_engineer", "hl_advisor"))
+
     def test_runner_can_request_one_send_directive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

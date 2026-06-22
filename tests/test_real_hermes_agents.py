@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 import uuid
 from pathlib import Path
@@ -97,6 +98,42 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertIn("hl_advisor -> hl_ceo:", completed.stdout)
         self.assertIn("HERMES_LINK_SKILL_TEST_PONG", completed.stdout)
         self.assertIn("HERMES_LINK_SKILL_TEST_DONE", completed.stdout)
+
+    def test_hermes_link_cli_notifies_sender_when_policy_blocks_route(self) -> None:
+        run_id = f"HERMES_POLICY_BLOCK_{uuid.uuid4().hex}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            org = _write_policy_block_org(Path(tmpdir))
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "chat",
+                    "hl_ceo",
+                    "Output exactly one Hermes Link SEND directive and no extra text: "
+                    f"SEND hl_advisor: {run_id}",
+                    "--org",
+                    str(org),
+                    "--max-messages",
+                    "2",
+                    "--timeout",
+                    str(TIMEOUT_SECONDS),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS * 3,
+            )
+
+        if completed.returncode != 0:
+            raise AssertionError(
+                f"policy block cli route failed with exit code {completed.returncode}\n"
+                f"stdout:\n{completed.stdout}\n"
+                f"stderr:\n{completed.stderr}"
+            )
+
+        self.assertIn("routing policy blocked", completed.stdout)
+        self.assertIn("hl_ceo is not allowed to send messages to hl_advisor", completed.stdout)
 
     def test_hl_ceo_advisor_ceo_roundtrip(self) -> None:
         self.assertIsNotNone(shutil.which("hl_ceo"), "hl_ceo alias is not on PATH")
@@ -227,6 +264,34 @@ def _run_hl_ceo_with_plugin(prompt: str) -> subprocess.CompletedProcess[str]:
             f"stderr:\n{completed.stderr}"
         )
     return completed
+
+
+def _write_policy_block_org(root: Path) -> Path:
+    skill = root / "skills" / "agent-comms" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("Use SEND agent_id: message.", encoding="utf-8")
+    org = root / "config" / "org.yaml"
+    org.parent.mkdir()
+    org.write_text(
+        "\n".join(
+            [
+                "agents:",
+                "  hl_ceo:",
+                "    command: hl_ceo",
+                "    expertise: Executive sender",
+                "  hl_advisor:",
+                "    command: hl_advisor",
+                "    expertise: Advisor recipient",
+                "routing:",
+                "  deny:",
+                "    hl_ceo:",
+                "      - hl_advisor",
+                "skill: skills/agent-comms/SKILL.md",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return org
 
 
 def _session_ids_for(turns: object, agent: str) -> list[str]:

@@ -37,6 +37,8 @@ Rules:
 - Choose the recipient based on the expertise listed in the org directory.
 - You may also use configured topics such as `@review` when the org directory
   lists them.
+- Hermes Link may block a route by org policy. If that happens, explain the
+  block to the user instead of retrying the same route.
 - Put the full message after the colon.
 - Do not wrap the directive in Markdown.
 - If you are done and want to answer the user, do not use `SEND`; answer normally.
