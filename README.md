@@ -209,10 +209,18 @@ SEND @review: message
 HANDOFF hl_cto: context for the agent taking over
 ```
 
-Use `HANDOFF` when the current agent should transfer ownership to another agent
-instead of collecting a reply and summarizing it. Hermes Link calls the target
-agent with the original request and handoff context, then returns that target
-agent's answer directly to the user.
+Use `SEND` for normal one-agent delegation. It is the default path: the target
+agent replies to the sender, and the sender continues the conversation with the
+user.
+
+Use handoff only when the current agent should transfer ownership to another
+agent instead of collecting a reply and summarizing it. In the plugin path,
+`mode=handoff` starts the target agent asynchronously, returns only a handoff
+acceptance plus thread id to the original agent, and writes the target's later
+work to the Hermes Link log/trace. This prevents the original agent from
+silently summarizing work it no longer owns. In the no-tool CLI text fallback,
+`HANDOFF` is synchronous because Hermes Link owns the whole terminal
+interaction, so the target agent's final answer is printed directly.
 
 Agents can also fan out to multiple independent recipients and wait for the
 available replies:
@@ -365,6 +373,7 @@ with the plugin and skill installed.
 
 - `hermes_link.hermes_runner.HermesRunner`: real Hermes profile mediator.
 - `hermes_link.bridge_runner`: plugin entrypoint for `route_message`.
+- `hermes_link.handoff_runner`: background worker for async plugin handoffs.
 - `hermes_link.org`: org config and topic resolution.
 - `hermes_link.session_map.SessionMap`: source-session to target-session reuse.
 - `hermes_link.log`: JSONL event log and formatted watcher output.

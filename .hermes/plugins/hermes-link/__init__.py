@@ -11,17 +11,17 @@ from typing import Any
 
 ROUTE_MESSAGE_SCHEMA = {
     "name": "route_message",
-    "description": "Send or hand off a message to another Hermes Link org agent and return its response.",
+    "description": "Send or hand off a message to another Hermes Link org agent. Send returns a response; handoff returns an async acceptance and thread id.",
     "parameters": {
         "type": "object",
         "properties": {
             "from_agent": {
                 "type": "string",
-                "description": "Your current agent id, for example agent_a.",
+                "description": "Your current agent id, for example hl_ceo.",
             },
             "to": {
                 "type": "string",
-                "description": "Target agent id from config/org.yaml, for example agent_b.",
+                "description": "Target agent id from config/org.yaml, for example hl_cto.",
             },
             "body": {
                 "type": "string",
