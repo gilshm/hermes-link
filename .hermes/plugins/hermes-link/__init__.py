@@ -1,4 +1,4 @@
-"""Minimal Hermes plugin bridge for Hermes Link."""
+"""Hermes plugin bridge for Hermes Link."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 
 ROUTE_MESSAGE_SCHEMA = {
     "name": "route_message",
-    "description": "Send a message to another Hermes Link org agent and return its response.",
+    "description": "Send or hand off a message to another Hermes Link org agent and return its response.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -26,6 +26,11 @@ ROUTE_MESSAGE_SCHEMA = {
             "body": {
                 "type": "string",
                 "description": "The full message to deliver to the target agent.",
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["send", "handoff"],
+                "description": "Use send to ask the target for help. Use handoff when the target should take over and answer the user directly. Defaults to send.",
             },
             "max_messages": {
                 "type": "integer",

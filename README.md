@@ -193,7 +193,13 @@ sending agent and writes a blocked event to the log.
 
 Desktop and TUI agents use the installed `route_message` plugin tool when it is
 available. The plugin calls back into this repository, runs the target Hermes
-profile, and returns a transcript to the calling agent.
+profile, and returns a transcript to the calling agent. The same tool supports
+normal delegation and ownership transfer:
+
+```text
+mode=send     # default: ask the target for help and return the response
+mode=handoff  # target takes over and answers the user directly
+```
 
 The skill also documents a text fallback:
 

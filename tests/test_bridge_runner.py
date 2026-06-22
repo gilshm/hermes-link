@@ -71,6 +71,57 @@ class BridgeRunnerTests(unittest.TestCase):
             self.assertIn("routing policy blocked", output.value)
             self.assertFalse((root / "state" / "session-map.json").exists())
 
+    def test_bridge_handoff_mode_calls_target_as_final_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_repo_shape(root)
+            calls: list[list[str]] = []
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                calls.append(args)
+                return subprocess.CompletedProcess(args, 0, stdout="session_id: cto-session\nhandoff final", stderr="")
+
+            payload = {
+                "from_agent": "hl_ceo",
+                "to": "hl_cto",
+                "body": "take over",
+                "mode": "handoff",
+                "source_session_id": "session-a",
+            }
+            with (
+                mock.patch("sys.stdin.read", return_value=json.dumps(payload)),
+                mock.patch.dict(os.environ, {"HERMES_LINK_HOME": str(root), "HERMES_LINK_STATE_DIR": str(root / "state")}),
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+                mock.patch.object(sys, "stdout", new_callable=_Capture) as output,
+            ):
+                bridge_runner.main()
+
+            self.assertEqual([call[0] for call in calls], ["hl_cto"])
+            self.assertIn("handed this conversation off", calls[0][-1])
+            self.assertIn("You now own the conversation", calls[0][-1])
+            self.assertIn("Final from hl_cto: handoff final", output.value)
+            events = (root / "state" / "events.jsonl").read_text(encoding="utf-8")
+            self.assertIn('"event": "handoff"', events)
+            self.assertIn('"event": "final"', events)
+
+    def test_bridge_rejects_unknown_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_repo_shape(root)
+            payload = {
+                "from_agent": "hl_ceo",
+                "to": "hl_cto",
+                "body": "take over",
+                "mode": "unknown",
+            }
+            with (
+                mock.patch("sys.stdin.read", return_value=json.dumps(payload)),
+                mock.patch.dict(os.environ, {"HERMES_LINK_HOME": str(root)}),
+                self.assertRaisesRegex(ValueError, "mode must be send or handoff"),
+            ):
+                bridge_runner.main()
+
 
 class _Capture:
     def __init__(self) -> None:

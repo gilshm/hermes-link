@@ -20,6 +20,9 @@ def main() -> int:
     from_agent = _required(payload, "from_agent")
     to_agent = org.resolve_agent(_required(payload, "to"))
     body = _required(payload, "body")
+    mode = str(payload.get("mode") or "send").strip()
+    if mode not in {"send", "handoff"}:
+        raise ValueError("mode must be send or handoff")
     max_messages = int(payload.get("max_messages") or 4)
     source_session_id = str(payload.get("source_session_id") or "").strip()
     thread_id = source_session_id or str(payload.get("thread_id") or "").strip() or "adhoc"
@@ -39,7 +42,7 @@ def main() -> int:
         print(denial)
         return 0
     event_log.write(
-        "bridge_request",
+        "handoff" if mode == "handoff" else "bridge_request",
         thread_id=thread_id,
         from_agent=from_agent,
         to_agent=to_agent,
@@ -60,12 +63,21 @@ def main() -> int:
         event_log=event_log,
         thread_id=thread_id,
     )
-    result = runner.chat(
-        to_agent,
-        f"{from_agent} sent you this message:\n\n{body}",
-        max_messages=max_messages,
-        stop_recipient=from_agent,
-    )
+    if mode == "handoff":
+        result = runner.chat(
+            to_agent,
+            f"{from_agent} handed this conversation off to you:\n\n{body}\n\n"
+            "You now own the conversation. Answer the original user directly. "
+            "Do not send the answer back to the handing-off agent unless you need more help.",
+            max_messages=max_messages,
+        )
+    else:
+        result = runner.chat(
+            to_agent,
+            f"{from_agent} sent you this message:\n\n{body}",
+            max_messages=max_messages,
+            stop_recipient=from_agent,
+        )
     print(_format_transcript(result, final_agent=to_agent))
     if source_session_id:
         for agent, session_id in runner.sessions.items():

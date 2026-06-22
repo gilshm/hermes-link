@@ -17,9 +17,15 @@ If the `route_message` tool is available, use it to contact another agent:
 - `from_agent`: your agent id.
 - `to`: the target agent id.
 - `body`: the message to deliver.
+- `mode`: use `send` for normal delegation, or `handoff` when the target agent
+  should take over and answer the user directly. If omitted, mode is `send`.
+
+When the user says "hand off", "transfer this", "let another agent take over",
+or asks that another agent answer directly, call `route_message` with
+`mode="handoff"`.
 
 If no `route_message` tool is available, output exactly one routing directive.
-Use `SEND` when contacting one agent:
+Use `SEND` as the default text fallback when contacting one agent:
 
 ```text
 SEND agent_id: message
@@ -76,6 +82,8 @@ Rules:
 - Choose the recipient based on the expertise listed in the org directory.
 - Use `HANDOFF` only when the target agent should become the final owner of the
   conversation and respond directly to the user.
+- If the `route_message` tool is available, prefer `mode="handoff"` over the
+  text `HANDOFF` directive for handoff requests.
 - You may also use configured topics such as `@review` when the org directory
   lists them.
 - Use configured groups such as `@engineering` only with `SEND_ALL`; groups

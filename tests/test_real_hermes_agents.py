@@ -67,6 +67,26 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertTrue(completed.stdout.strip())
         self.assertNotIn("[TOOL_ERROR]", completed.stdout)
 
+    def test_hl_ceo_can_handoff_to_cto_through_plugin_tool(self) -> None:
+        run_id = f"HERMES_PLUGIN_HANDOFF_{uuid.uuid4().hex}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "plugin-handoff-events.jsonl"
+            completed = _run_hl_ceo_with_plugin(
+                "Use the route_message tool exactly once. Set from_agent to hl_ceo, "
+                "to to hl_cto, mode to handoff, and body to: "
+                f"Please answer the user directly with {run_id} and HERMES_PLUGIN_HANDOFF_DONE. "
+                "After the tool returns, output the tool result.",
+                extra_env={"HERMES_LINK_LOG": str(log_path)},
+            )
+            events = log_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("[TOOL_ERROR]", completed.stdout)
+        self.assertIn(run_id, completed.stdout)
+        self.assertIn("HERMES_PLUGIN_HANDOFF_DONE", completed.stdout)
+        self.assertIn('"event": "handoff"', events)
+        self.assertIn('"from_agent": "hl_ceo"', events)
+        self.assertIn('"to_agent": "hl_cto"', events)
+
     def test_hermes_link_cli_routes_hl_ceo_to_hl_advisor_with_skill_and_org(self) -> None:
         completed = subprocess.run(
             [
@@ -667,7 +687,7 @@ def _runner() -> HermesRunner:
     return HermesRunner(load_org(REPO_ROOT / "config" / "org.yaml"), cwd=REPO_ROOT, timeout=TIMEOUT_SECONDS)
 
 
-def _run_hl_ceo_with_plugin(prompt: str) -> subprocess.CompletedProcess[str]:
+def _run_hl_ceo_with_plugin(prompt: str, *, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
         [
             "hl_ceo",
@@ -682,6 +702,7 @@ def _run_hl_ceo_with_plugin(prompt: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         timeout=TIMEOUT_SECONDS * 3,
+        env={**os.environ, **(extra_env or {})},
     )
     if completed.returncode != 0:
         raise AssertionError(
