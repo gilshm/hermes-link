@@ -112,6 +112,12 @@ Show configured agents and local install state:
 bin/hermes_link agents
 ```
 
+Run a live health prompt against each configured agent:
+
+```bash
+bin/hermes_link agents --check
+```
+
 Show persisted source-session to target-session mappings:
 
 ```bash

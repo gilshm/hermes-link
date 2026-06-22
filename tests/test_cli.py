@@ -124,6 +124,45 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("org config ok", output.getvalue())
 
+    def test_agents_command_can_run_health_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            org = root / "config" / "org.yaml"
+            org.parent.mkdir()
+            org.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  agent_a:",
+                        "    command: agent_a",
+                        "    expertise: Coordinator",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            output = io.StringIO()
+
+            with (
+                mock.patch("sys.stdout", output),
+                mock.patch("hermes_link.cli.inspect_agent") as inspect,
+                mock.patch("hermes_link.cli.check_agent_health") as health,
+            ):
+                inspect.return_value.command_available = True
+                inspect.return_value.skill_installed = True
+                inspect.return_value.plugin_installed = True
+                inspect.return_value.plugin_enabled = True
+                inspect.return_value.agent.command = "agent_a"
+                inspect.return_value.agent.expertise = "Coordinator"
+                health.return_value.ok = True
+                health.return_value.response = "HERMES_LINK_HEALTH_OK"
+                health.return_value.error = ""
+                health.return_value.elapsed_seconds = 0.1
+                exit_code = main(["agents", "--org", str(org), "--check"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("health: ok", output.getvalue())
+        self.assertIn("HERMES_LINK_HEALTH_OK", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

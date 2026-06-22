@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from hermes_link.org import AgentConfig
-from hermes_link.status import inspect_agent, yes_no
+from hermes_link.status import check_agent_health, inspect_agent, yes_no
 
 
 class StatusTests(unittest.TestCase):
@@ -38,6 +38,24 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(yes_no(True), "yes")
         self.assertEqual(yes_no(False), "no")
         self.assertEqual(yes_no(None), "unknown")
+
+    def test_check_agent_health_runs_smoke_prompt(self) -> None:
+        agent = AgentConfig("agent_a", "agent_a", "Coordinator")
+
+        with (
+            mock.patch("hermes_link.status.shutil.which", return_value="/bin/agent_a"),
+            mock.patch(
+                "hermes_link.status.subprocess.run",
+                return_value=subprocess.CompletedProcess(
+                    ["agent_a"], 0, stdout="session_id: s1\nHERMES_LINK_HEALTH_OK\n", stderr=""
+                ),
+            ) as run,
+        ):
+            health = check_agent_health(agent, timeout=3)
+
+        self.assertTrue(health.ok)
+        self.assertEqual(health.response, "HERMES_LINK_HEALTH_OK")
+        self.assertIn("-q", run.call_args.args[0])
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from hermes_link.hermes_runner import HermesRunner
 from hermes_link.log import EventLog, default_log_path, format_event, format_trace, iter_events, trace_events
 from hermes_link.org import load_org
 from hermes_link.session_map import SessionMap
-from hermes_link.status import inspect_agent, yes_no
+from hermes_link.status import check_agent_health, inspect_agent, yes_no
 from hermes_link.validation import validate_org
 
 
@@ -42,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     agents = subparsers.add_parser("agents", help="Show configured org agents")
     agents.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
     agents.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
+    agents.add_argument("--check", action="store_true", help="Run a smoke prompt against each agent")
+    agents.add_argument("--timeout", type=int, default=30)
 
     sessions = subparsers.add_parser("sessions", help="Show Hermes Link session mappings")
     sessions.add_argument("--path", type=Path, default=REPO_ROOT / ".hermes-link" / "session-map.json")
@@ -92,6 +94,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  skill installed: {yes_no(status.skill_installed)}")
             print(f"  plugin installed: {yes_no(status.plugin_installed)}")
             print(f"  plugin enabled: {yes_no(status.plugin_enabled)}")
+            if args.check:
+                health = check_agent_health(org.agents[name], timeout=args.timeout, cwd=REPO_ROOT)
+                state = "ok" if health.ok else "failed"
+                detail = health.response if health.ok else health.error
+                print(f"  health: {state} ({health.elapsed_seconds:.2f}s)")
+                if detail:
+                    print(f"  health detail: {detail}")
         return 0
     if args.command == "sessions":
         entries = SessionMap(args.path).entries()
