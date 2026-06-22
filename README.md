@@ -1,7 +1,19 @@
 # Hermes Link
 
-Hermes Link lets independent Hermes agents communicate with each other while
-keeping their own Hermes identities, sessions, and responsibilities.
+Hermes Link enables autonomous Hermes agents to communicate and collaborate as
+peers.
+
+As agent systems grow, a single agent often is not enough. You may want one
+agent focused on product decisions, another on architecture, another on backend
+implementation, another on frontend behavior, and another on review. Without a
+coordination layer, delegation becomes fragile: messages get copied manually,
+responses lose their original context, separate agent sessions drift apart, and
+parallel work is hard to trace.
+
+Hermes Link solves that coordination problem. It gives Hermes agents a shared
+communication layer for delegating tasks, routing replies, preserving each
+agent's own session, enforcing optional org rules, and observing what happened
+across a multi-agent conversation.
 
 The core flow is:
 
@@ -9,12 +21,15 @@ The core flow is:
 2. That agent decides whether another configured agent should help.
 3. Hermes Link delivers the message to the target agent and preserves the target
    agent's session for future messages in the same routed thread.
-4. Replies are routed back through the originating agent so it can answer the
+4. The target can reply, delegate onward, or use scatter-gather to ask multiple
+   agents in parallel.
+5. Replies are routed back through the originating agent so it can answer the
    user with the delegated context included.
 
 Agents are declared in [config/org.yaml](config/org.yaml). Each entry defines the
-Hermes command to run and the agent's expertise, which is shown to agents so they
-can choose the right peer instead of guessing from ids.
+Hermes command to run, the agent's expertise, and optional hierarchy metadata.
+That directory is shown to agents so they can choose the right collaborator
+instead of guessing from ids.
 
 ## Install
 
