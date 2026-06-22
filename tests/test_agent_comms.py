@@ -69,6 +69,14 @@ class AgentCommsTests(unittest.TestCase):
             org.resolve_group("@leadership"),
             ("hl_ceo", "hl_advisor", "hl_cto", "hl_product_manager"),
         )
+        self.assertEqual(
+            org.resolve_broadcast("hl_cto", "@direct_reports"),
+            ("hl_backend_engineer", "hl_frontend_engineer"),
+        )
+        self.assertEqual(org.resolve_broadcast("hl_backend_engineer", "@manager"), ("hl_cto",))
+        self.assertEqual(org.resolve_broadcast("hl_backend_engineer", "@peers"), ("hl_frontend_engineer",))
+        self.assertEqual(org.resolve_broadcast("hl_backend_engineer", "@team"), ("hl_frontend_engineer",))
+        self.assertEqual(org.resolve_broadcast("hl_ceo", "@manager"), ())
         self.assertEqual(org.skill_path.name, "SKILL.md")
         self.assertEqual(org.scatter_timeout, 120)
 
@@ -724,6 +732,144 @@ class AgentCommsTests(unittest.TestCase):
         self.assertIn("hl_frontend_engineer replied: Frontend replied.", prompts[-1])
         self.assertEqual(runner.sessions["hl_cto"], "cto-session")
 
+    def test_runner_expands_built_in_direct_reports_send_all_through_scatter_gather(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND_ALL @direct_reports: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    manager: hl_cto",
+                        "  hl_frontend_engineer:",
+                        "    command: hl_frontend_engineer",
+                        "    manager: hl_cto",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 3",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            outputs = {
+                "hl_cto": [
+                    "session_id: cto-session\nSEND_ALL @direct_reports: report status",
+                    "session_id: cto-session\nDirect reports replied.",
+                ],
+                "hl_backend_engineer": ["session_id: backend-session\nBackend replied."],
+                "hl_frontend_engineer": ["session_id: frontend-session\nFrontend replied."],
+            }
+            prompts = []
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                prompts.append(args[-1])
+                return subprocess.CompletedProcess(args, 0, stdout=outputs[args[0]].pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                runner = HermesRunner(org, cwd=root)
+                result = runner.chat("hl_cto", "ask direct reports")
+
+        self.assertEqual(result.final_response, "Direct reports replied.")
+        self.assertEqual(
+            [(message.sender, message.recipient, message.body) for message in result.transcript],
+            [
+                ("user", "hl_cto", "ask direct reports"),
+                ("hl_cto", "hl_backend_engineer", "report status"),
+                ("hl_cto", "hl_frontend_engineer", "report status"),
+            ],
+        )
+        self.assertIn("hl_backend_engineer replied: Backend replied.", prompts[-1])
+        self.assertIn("hl_frontend_engineer replied: Frontend replied.", prompts[-1])
+
+    def test_runner_expands_manager_peers_and_team_broadcasts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND_ALL @target: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "    team: executive",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    team: engineering",
+                        "    manager: hl_cto",
+                        "  hl_frontend_engineer:",
+                        "    command: hl_frontend_engineer",
+                        "    team: engineering",
+                        "    manager: hl_cto",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 3",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+
+        self.assertEqual(org.resolve_broadcast("hl_backend_engineer", "@manager"), ("hl_cto",))
+        self.assertEqual(org.resolve_broadcast("hl_backend_engineer", "@peers"), ("hl_frontend_engineer",))
+        self.assertEqual(org.resolve_broadcast("hl_backend_engineer", "@team"), ("hl_frontend_engineer",))
+
+    def test_runner_reports_empty_built_in_broadcast_as_scatter_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND_ALL @manager: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 3",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            outputs = {
+                "hl_ceo": [
+                    "session_id: ceo-session\nSEND_ALL @manager: need advice",
+                    "session_id: ceo-session\nI have no manager.",
+                ],
+            }
+            prompts = []
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                prompts.append(args[-1])
+                return subprocess.CompletedProcess(args, 0, stdout=outputs[args[0]].pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                result = HermesRunner(org, cwd=root).chat("hl_ceo", "ask manager")
+
+        self.assertEqual(result.final_response, "I have no manager.")
+        self.assertIn("@manager failed: @manager resolved to no recipients.", prompts[-1])
+        self.assertEqual(len(result.transcript), 1)
+
     def test_runner_send_all_continues_after_blocked_recipient(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -783,6 +929,32 @@ class AgentCommsTests(unittest.TestCase):
 
         self.assertTrue(org.can_route("hl_backend_engineer", "hl_ceo"))
         self.assertTrue(org.can_route("hl_frontend_engineer", "hl_advisor"))
+
+    def test_group_cannot_use_built_in_broadcast_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("skill", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "groups:",
+                        "  direct_reports:",
+                        "    - hl_ceo",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "conflicts with built-in broadcast target"):
+                load_org(org_path)
 
     def test_runner_can_request_one_send_directive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

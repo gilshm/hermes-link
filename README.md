@@ -156,6 +156,20 @@ Groups are multi-agent aliases for scatter-gather. A directive like
 group, applies the current routing policy to each recipient, and then uses the
 same concurrent scatter-gather backend as an explicit `SEND_ALL` list.
 
+Hermes Link also provides built-in broadcast targets that are resolved relative
+to the sending agent:
+
+```text
+@direct_reports  # agents managed by the sender
+@manager         # the sender's manager
+@peers           # agents with the same manager
+@team            # agents on the same team, excluding the sender
+```
+
+For example, `SEND_ALL @direct_reports: status?` from `hl_cto` expands to
+`hl_backend_engineer` and `hl_frontend_engineer`, while the same directive from
+`hl_ceo` expands to `hl_advisor`, `hl_cto`, and `hl_product_manager`.
+
 Routing currently has two modes only:
 
 ```yaml
@@ -201,6 +215,13 @@ Or use a configured group alias to send the same message to every group member:
 
 ```text
 SEND_ALL @engineering: What's up?
+```
+
+Or use a built-in broadcast target:
+
+```text
+SEND_ALL @direct_reports: What's up?
+SEND_ALL @peers: Please review this tradeoff.
 ```
 
 Hermes Link executes `SEND_ALL` as scatter-gather: it dispatches allowed

@@ -7,6 +7,9 @@ from typing import Any
 import yaml
 
 
+BUILT_IN_BROADCASTS = frozenset({"direct_reports", "manager", "peers", "team"})
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     name: str
@@ -58,6 +61,27 @@ class OrgConfig:
         if normalized not in self.groups:
             raise ValueError(f"unknown group: {target}")
         return self.groups[normalized].agents
+
+    def resolve_broadcast(self, sender: str, target: str) -> tuple[str, ...]:
+        normalized = target.removeprefix("@")
+        if normalized == "direct_reports":
+            return tuple(sorted(name for name, agent in self.agents.items() if agent.manager == sender))
+        if normalized == "manager":
+            manager = self.agents[sender].manager
+            return (manager,) if manager else ()
+        if normalized == "peers":
+            manager = self.agents[sender].manager
+            if not manager:
+                return ()
+            return tuple(sorted(name for name, agent in self.agents.items() if name != sender and agent.manager == manager))
+        if normalized == "team":
+            team = self.agents[sender].team
+            if not team:
+                return ()
+            return tuple(sorted(name for name, agent in self.agents.items() if name != sender and agent.team == team))
+        if normalized in self.groups:
+            return self.groups[normalized].agents
+        return (self.resolve_agent(target),)
 
     def can_route(self, sender: str, recipient: str) -> bool:
         if self.routing.mode == "flat":
@@ -179,6 +203,8 @@ def _load_groups(raw: Any, agents: dict[str, AgentConfig]) -> dict[str, GroupCon
             raise ValueError(f"group {name} must be a list of agent ids")
         if not value:
             raise ValueError(f"group {name} must include at least one agent")
+        if name in BUILT_IN_BROADCASTS:
+            raise ValueError(f"group {name} conflicts with built-in broadcast target @{name}")
         unknown = sorted(set(value) - set(agents))
         if unknown:
             raise ValueError(f"group {name} references unknown agent(s): {', '.join(unknown)}")

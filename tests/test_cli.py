@@ -236,6 +236,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("`-- hl_ceo: CEO", output.getvalue())
         self.assertIn("`-- hl_backend_engineer: Backend Engineer", output.getvalue())
         self.assertIn("- @engineering: hl_backend_engineer", output.getvalue())
+        self.assertIn("- @direct_reports: sender's direct reports", output.getvalue())
+        self.assertIn("- @peers: sender's same-manager peers", output.getvalue())
 
     def test_agents_command_can_run_health_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

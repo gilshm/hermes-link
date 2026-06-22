@@ -358,6 +358,70 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertIn("gather hl_backend_engineer", trace.stdout)
         self.assertIn("gather hl_frontend_engineer", trace.stdout)
 
+    def test_hermes_link_cli_send_all_scatter_gathers_direct_reports_builtin(self) -> None:
+        run_id = f"HERMES_DIRECT_REPORTS_{uuid.uuid4().hex}"
+        thread_id = f"live-direct-reports-{uuid.uuid4().hex[:8]}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "direct-reports-events.jsonl"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "chat",
+                    "hl_cto",
+                    "Output exactly one SEND_ALL directive and no extra text. Use this exact directive:\n"
+                    f"SEND_ALL @direct_reports: Reply normally with {run_id} and your role marker. "
+                    "Backend must include HERMES_DIRECT_BACKEND. Frontend must include HERMES_DIRECT_FRONTEND.\n"
+                    "After both replies are gathered, answer the user with "
+                    f"{run_id}, HERMES_DIRECT_BACKEND, HERMES_DIRECT_FRONTEND, and HERMES_DIRECT_DONE.",
+                    "--max-messages",
+                    "4",
+                    "--timeout",
+                    str(TIMEOUT_SECONDS),
+                    "--thread-id",
+                    thread_id,
+                    "--log-path",
+                    str(log_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS * 5,
+            )
+            if completed.returncode != 0:
+                raise AssertionError(
+                    f"@direct_reports SEND_ALL cli route failed with exit code {completed.returncode}\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}"
+                )
+            trace = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "trace",
+                    thread_id,
+                    "--path",
+                    str(log_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS,
+            )
+
+        self.assertIn("thread_id: " + thread_id, completed.stdout)
+        self.assertIn("hl_cto -> hl_backend_engineer:", completed.stdout)
+        self.assertIn("hl_cto -> hl_frontend_engineer:", completed.stdout)
+        self.assertIn("HERMES_DIRECT_DONE", completed.stdout)
+        self.assertIn("HERMES_DIRECT_BACKEND", completed.stdout)
+        self.assertIn("HERMES_DIRECT_FRONTEND", completed.stdout)
+        self.assertEqual(trace.returncode, 0, trace.stderr)
+        self.assertIn("scatter hl_cto -> [hl_backend_engineer, hl_frontend_engineer]", trace.stdout)
+        self.assertIn("gather hl_backend_engineer", trace.stdout)
+        self.assertIn("gather hl_frontend_engineer", trace.stdout)
+
     def test_hermes_link_cli_notifies_sender_when_policy_blocks_route(self) -> None:
         run_id = f"HERMES_POLICY_BLOCK_{uuid.uuid4().hex}"
         with tempfile.TemporaryDirectory() as tmpdir:

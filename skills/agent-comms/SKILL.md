@@ -41,6 +41,15 @@ agents in that group:
 SEND_ALL @engineering: What's up?
 ```
 
+You may also use built-in broadcast targets relative to your agent:
+
+```text
+SEND_ALL @direct_reports: What's up?
+SEND_ALL @manager: I need guidance on this.
+SEND_ALL @peers: Please review this tradeoff.
+SEND_ALL @team: Please each give a status update.
+```
+
 Examples:
 
 ```text
@@ -50,6 +59,7 @@ SEND_ALL:
 - hl_backend_engineer: Please review the API impact.
 - hl_frontend_engineer: Please review the UI impact.
 SEND_ALL @engineering: Please each give a short implementation risk.
+SEND_ALL @direct_reports: Please each give a short status update.
 ```
 
 Rules:
@@ -60,6 +70,8 @@ Rules:
   lists them.
 - Use configured groups such as `@engineering` only with `SEND_ALL`; groups
   expand to multiple recipients and use scatter-gather.
+- Use built-in broadcast targets only with `SEND_ALL`. They are resolved
+  relative to your agent: `@direct_reports`, `@manager`, `@peers`, and `@team`.
 - Hermes Link may block a route by org policy. If that happens, explain the
   block to the user instead of retrying the same route.
 - Use `SEND_ALL` for direct reports, team checks, parallel reviews, or asking

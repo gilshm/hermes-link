@@ -226,6 +226,15 @@ def _format_org_graph(org: OrgConfig) -> str:
         lines.append("groups:")
         for name in sorted(org.groups):
             lines.append(f"- @{name}: {', '.join(org.groups[name].agents)}")
+    lines.extend(
+        [
+            "built-ins:",
+            "- @direct_reports: sender's direct reports",
+            "- @manager: sender's manager",
+            "- @peers: sender's same-manager peers",
+            "- @team: sender's same-team peers",
+        ]
+    )
     return "\n".join(lines)
 
 

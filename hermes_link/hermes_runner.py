@@ -130,7 +130,8 @@ class HermesRunner:
             if isinstance(directive, SendAllDirective):
                 scatter_items = self._run_scatter(current_agent, directive)
                 for item in scatter_items:
-                    transcript.append(Message(current_agent, item.recipient, item.body))
+                    if item.recipient in self._org.agents:
+                        transcript.append(Message(current_agent, item.recipient, item.body))
                     if item.turn is not None:
                         turns.append(item.turn)
                 current_prompt = self._agent_prompt(
@@ -228,15 +229,35 @@ class HermesRunner:
 
     def _run_scatter(self, sender: str, directive: SendAllDirective) -> list[ScatterItem]:
         batch = []
+        precomputed_results = []
         for send in directive.sends:
-            for recipient in self._resolve_scatter_recipients(send.recipient):
+            try:
+                recipients = self._resolve_scatter_recipients(sender, send.recipient)
+            except ValueError as exc:
+                precomputed_results.append(ScatterItem(send.recipient, send.body, False, str(exc)))
+                continue
+            if not recipients:
+                precomputed_results.append(ScatterItem(send.recipient, send.body, False, f"{send.recipient} resolved to no recipients."))
+                continue
+            for recipient in recipients:
                 batch.append(SendDirective(recipient=recipient, body=send.body))
         self._log(
             "scatter_start",
             from_agent=sender,
             recipients=[send.recipient for send in batch],
         )
-        results: list[ScatterItem | None] = [None] * len(batch)
+        for item in precomputed_results:
+            self._log(
+                "scatter_error",
+                from_agent=sender,
+                to_agent=item.recipient,
+                body=item.body,
+                reason=item.response,
+            )
+        if not batch:
+            return precomputed_results
+        results: list[ScatterItem | None] = [*precomputed_results, *([None] * len(batch))]
+        offset = len(precomputed_results)
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch)) as executor:
             futures = {}
             for index, send in enumerate(batch):
@@ -249,7 +270,7 @@ class HermesRunner:
                         body=send.body,
                         reason=denial,
                     )
-                    results[index] = ScatterItem(send.recipient, send.body, False, denial)
+                    results[offset + index] = ScatterItem(send.recipient, send.body, False, denial)
                     continue
                 self._log(
                     "scatter_message",
@@ -263,7 +284,7 @@ class HermesRunner:
                     "Answer normally. Do not output SEND unless you must delegate.",
                     allow_tools=False,
                 )
-                futures[executor.submit(self._run_agent, send.recipient, prompt, self._org.scatter_timeout)] = (index, send)
+                futures[executor.submit(self._run_agent, send.recipient, prompt, self._org.scatter_timeout)] = (offset + index, send)
             for future in concurrent.futures.as_completed(futures):
                 index, send = futures[future]
                 try:
@@ -349,6 +370,7 @@ class HermesRunner:
                 "SEND_ALL:\n"
                 "- agent_id: message\n"
                 "- agent_id: message\n"
+                "Or output SEND_ALL @target: message for a configured group or built-in broadcast target.\n"
                 "If you are done, answer normally."
             )
         return (
@@ -383,6 +405,14 @@ class HermesRunner:
             group = self._org.groups[name]
             members = ", ".join(group.agents)
             lines.append(f"- @{name}: group agents: {members}")
+        lines.extend(
+            [
+                "- @direct_reports: built-in group for your direct reports",
+                "- @manager: built-in group for your manager",
+                "- @peers: built-in group for agents with your same manager",
+                "- @team: built-in group for agents with your same team, excluding you",
+            ]
+        )
         return "\n".join(lines)
 
     def _routing_guidance(self) -> str:
@@ -397,11 +427,8 @@ class HermesRunner:
     def _resolve_agent(self, target: str) -> str:
         return self._org.resolve_agent(target)
 
-    def _resolve_scatter_recipients(self, target: str) -> tuple[str, ...]:
-        normalized = target.removeprefix("@")
-        if normalized in self._org.groups:
-            return self._org.resolve_group(target)
-        return (self._resolve_agent(target),)
+    def _resolve_scatter_recipients(self, sender: str, target: str) -> tuple[str, ...]:
+        return self._org.resolve_broadcast(sender, target)
 
 
 def _clean_response(output: str) -> str:
