@@ -25,6 +25,12 @@ class TopicConfig:
 
 
 @dataclass(frozen=True)
+class GroupConfig:
+    name: str
+    agents: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RoutingPolicy:
     mode: str
 
@@ -33,6 +39,7 @@ class RoutingPolicy:
 class OrgConfig:
     agents: dict[str, AgentConfig]
     topics: dict[str, TopicConfig]
+    groups: dict[str, GroupConfig]
     routing: RoutingPolicy
     skill_path: Path
     max_messages: int
@@ -45,6 +52,12 @@ class OrgConfig:
         if normalized in self.topics:
             return self.topics[normalized].default
         raise ValueError(f"unknown agent or topic: {target}")
+
+    def resolve_group(self, target: str) -> tuple[str, ...]:
+        normalized = target.removeprefix("@")
+        if normalized not in self.groups:
+            raise ValueError(f"unknown group: {target}")
+        return self.groups[normalized].agents
 
     def can_route(self, sender: str, recipient: str) -> bool:
         if self.routing.mode == "flat":
@@ -65,6 +78,7 @@ def load_org(path: Path) -> OrgConfig:
 
     agents = _load_agents(raw.get("agents"))
     topics = _load_topics(raw.get("topics"), agents)
+    groups = _load_groups(raw.get("groups"), agents)
     routing = _load_routing(raw.get("routing"), agents)
     skill = raw.get("skill", "skills/agent-comms/SKILL.md")
     max_messages = int(raw.get("max_messages", 10))
@@ -77,6 +91,7 @@ def load_org(path: Path) -> OrgConfig:
     return OrgConfig(
         agents=agents,
         topics=topics,
+        groups=groups,
         routing=routing,
         skill_path=(path.parent.parent / str(skill)).resolve(),
         max_messages=max_messages,
@@ -148,6 +163,27 @@ def _load_topics(raw: Any, agents: dict[str, AgentConfig]) -> dict[str, TopicCon
             raise ValueError(f"topic {name} references unknown agent(s): {', '.join(unknown)}")
         topics[name] = TopicConfig(name=name, default=default, agents=tuple(members))
     return topics
+
+
+def _load_groups(raw: Any, agents: dict[str, AgentConfig]) -> dict[str, GroupConfig]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("groups must be a mapping")
+
+    groups: dict[str, GroupConfig] = {}
+    for name, value in raw.items():
+        if not isinstance(name, str):
+            raise ValueError("group ids must be strings")
+        if not isinstance(value, list) or not all(isinstance(member, str) for member in value):
+            raise ValueError(f"group {name} must be a list of agent ids")
+        if not value:
+            raise ValueError(f"group {name} must include at least one agent")
+        unknown = sorted(set(value) - set(agents))
+        if unknown:
+            raise ValueError(f"group {name} references unknown agent(s): {', '.join(unknown)}")
+        groups[name] = GroupConfig(name=name, agents=tuple(value))
+    return groups
 
 
 def _load_routing(raw: Any, agents: dict[str, AgentConfig]) -> RoutingPolicy:

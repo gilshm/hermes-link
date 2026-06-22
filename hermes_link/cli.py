@@ -222,6 +222,10 @@ def _format_org_graph(org: OrgConfig) -> str:
     lines = [f"routing: {org.routing.mode}", "agents:"]
     for index, root in enumerate(roots):
         _append_agent_tree(lines, agents, children, root, prefix="", is_last=index == len(roots) - 1)
+    if org.groups:
+        lines.append("groups:")
+        for name in sorted(org.groups):
+            lines.append(f"- @{name}: {', '.join(org.groups[name].agents)}")
     return "\n".join(lines)
 
 

@@ -82,6 +82,19 @@ topics:
       - hl_advisor
       - hl_cto
 
+groups:
+  leadership:
+    - hl_ceo
+    - hl_advisor
+    - hl_cto
+    - hl_product_manager
+  engineering:
+    - hl_backend_engineer
+    - hl_frontend_engineer
+  product_review:
+    - hl_product_manager
+    - hl_advisor
+
 # Routing has two modes:
 # - flat: every configured agent may contact every other configured agent.
 # - strict_hierarchical: agents may contact managers/reports across the hierarchy,

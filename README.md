@@ -132,6 +132,16 @@ topics:
       - hl_advisor
       - hl_cto
 
+groups:
+  engineering:
+    - hl_backend_engineer
+    - hl_frontend_engineer
+  leadership:
+    - hl_ceo
+    - hl_advisor
+    - hl_cto
+    - hl_product_manager
+
 skill: skills/agent-comms/SKILL.md
 max_messages: 12
 scatter_timeout: 120
@@ -140,6 +150,11 @@ routing: flat
 
 Agents can route directly to another agent id, or to a topic such as `@review`.
 Topics resolve to their configured default agent.
+
+Groups are multi-agent aliases for scatter-gather. A directive like
+`SEND_ALL @engineering: message` expands to every agent in the `engineering`
+group, applies the current routing policy to each recipient, and then uses the
+same concurrent scatter-gather backend as an explicit `SEND_ALL` list.
 
 Routing currently has two modes only:
 
@@ -180,6 +195,12 @@ available replies:
 SEND_ALL:
 - hl_backend_engineer: What's up?
 - hl_frontend_engineer: What's up?
+```
+
+Or use a configured group alias to send the same message to every group member:
+
+```text
+SEND_ALL @engineering: What's up?
 ```
 
 Hermes Link executes `SEND_ALL` as scatter-gather: it dispatches allowed

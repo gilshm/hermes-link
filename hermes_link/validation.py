@@ -35,4 +35,10 @@ def _validate_agents(org: OrgConfig) -> list[str]:
         for agent in topic.agents:
             if agent not in org.agents:
                 errors.append(f"topic {name} references unknown agent: {agent}")
+    for name, group in sorted(org.groups.items()):
+        if not group.agents:
+            errors.append(f"group {name} has no agents")
+        for agent in group.agents:
+            if agent not in org.agents:
+                errors.append(f"group {name} references unknown agent: {agent}")
     return errors

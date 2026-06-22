@@ -217,6 +217,9 @@ class CliTests(unittest.TestCase):
                         "    team: engineering",
                         "    manager: hl_cto",
                         "    expertise: Backend",
+                        "groups:",
+                        "  engineering:",
+                        "    - hl_backend_engineer",
                         "routing: strict_hierarchical",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
@@ -232,6 +235,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("routing: strict_hierarchical", output.getvalue())
         self.assertIn("`-- hl_ceo: CEO", output.getvalue())
         self.assertIn("`-- hl_backend_engineer: Backend Engineer", output.getvalue())
+        self.assertIn("- @engineering: hl_backend_engineer", output.getvalue())
 
     def test_agents_command_can_run_health_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

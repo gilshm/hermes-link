@@ -229,8 +229,8 @@ class HermesRunner:
     def _run_scatter(self, sender: str, directive: SendAllDirective) -> list[ScatterItem]:
         batch = []
         for send in directive.sends:
-            recipient = self._resolve_agent(send.recipient)
-            batch.append(SendDirective(recipient=recipient, body=send.body))
+            for recipient in self._resolve_scatter_recipients(send.recipient):
+                batch.append(SendDirective(recipient=recipient, body=send.body))
         self._log(
             "scatter_start",
             from_agent=sender,
@@ -379,6 +379,10 @@ class HermesRunner:
             topic = self._org.topics[name]
             members = ", ".join(topic.agents)
             lines.append(f"- @{name}: topic default {topic.default}; agents: {members}")
+        for name in sorted(self._org.groups):
+            group = self._org.groups[name]
+            members = ", ".join(group.agents)
+            lines.append(f"- @{name}: group agents: {members}")
         return "\n".join(lines)
 
     def _routing_guidance(self) -> str:
@@ -392,6 +396,12 @@ class HermesRunner:
 
     def _resolve_agent(self, target: str) -> str:
         return self._org.resolve_agent(target)
+
+    def _resolve_scatter_recipients(self, target: str) -> tuple[str, ...]:
+        normalized = target.removeprefix("@")
+        if normalized in self._org.groups:
+            return self._org.resolve_group(target)
+        return (self._resolve_agent(target),)
 
 
 def _clean_response(output: str) -> str:

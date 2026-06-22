@@ -34,6 +34,13 @@ SEND_ALL:
 - hl_frontend_engineer: What's up?
 ```
 
+If the org directory lists a group alias, you may send the same message to all
+agents in that group:
+
+```text
+SEND_ALL @engineering: What's up?
+```
+
 Examples:
 
 ```text
@@ -42,6 +49,7 @@ SEND hl_ceo: I reviewed it. The smallest next step is clear.
 SEND_ALL:
 - hl_backend_engineer: Please review the API impact.
 - hl_frontend_engineer: Please review the UI impact.
+SEND_ALL @engineering: Please each give a short implementation risk.
 ```
 
 Rules:
@@ -50,6 +58,8 @@ Rules:
 - Choose the recipient based on the expertise listed in the org directory.
 - You may also use configured topics such as `@review` when the org directory
   lists them.
+- Use configured groups such as `@engineering` only with `SEND_ALL`; groups
+  expand to multiple recipients and use scatter-gather.
 - Hermes Link may block a route by org policy. If that happens, explain the
   block to the user instead of retrying the same route.
 - Use `SEND_ALL` for direct reports, team checks, parallel reviews, or asking

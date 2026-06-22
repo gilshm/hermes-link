@@ -43,6 +43,12 @@ class AgentCommsTests(unittest.TestCase):
             ),
         )
 
+    def test_parse_compact_send_all_group_directive(self) -> None:
+        self.assertEqual(
+            parse_send_directive("SEND_ALL @engineering: status check"),
+            SendAllDirective((SendDirective("@engineering", "status check"),)),
+        )
+
     def test_load_org(self) -> None:
         org = load_org(Path("config/org.yaml"))
 
@@ -58,6 +64,11 @@ class AgentCommsTests(unittest.TestCase):
         self.assertIn("second opinions", org.agents["hl_advisor"].expertise)
         self.assertEqual(org.resolve_agent("@review"), "hl_advisor")
         self.assertEqual(org.resolve_agent("@technical"), "hl_cto")
+        self.assertEqual(org.resolve_group("@engineering"), ("hl_backend_engineer", "hl_frontend_engineer"))
+        self.assertEqual(
+            org.resolve_group("@leadership"),
+            ("hl_ceo", "hl_advisor", "hl_cto", "hl_product_manager"),
+        )
         self.assertEqual(org.skill_path.name, "SKILL.md")
         self.assertEqual(org.scatter_timeout, 120)
 
@@ -648,6 +659,69 @@ class AgentCommsTests(unittest.TestCase):
                 ("hl_cto", "hl_frontend_engineer"),
             ],
         )
+        self.assertEqual(runner.sessions["hl_cto"], "cto-session")
+
+    def test_runner_expands_group_send_all_through_scatter_gather(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND_ALL @group: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "  hl_frontend_engineer:",
+                        "    command: hl_frontend_engineer",
+                        "groups:",
+                        "  engineering:",
+                        "    - hl_backend_engineer",
+                        "    - hl_frontend_engineer",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 3",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            outputs = {
+                "hl_cto": [
+                    "session_id: cto-session\nSEND_ALL @engineering: team status",
+                    "session_id: cto-session\nEngineering replied.",
+                ],
+                "hl_backend_engineer": ["session_id: backend-session\nBackend replied."],
+                "hl_frontend_engineer": ["session_id: frontend-session\nFrontend replied."],
+            }
+            prompts = []
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                prompts.append(args[-1])
+                return subprocess.CompletedProcess(args, 0, stdout=outputs[args[0]].pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                runner = HermesRunner(org, cwd=root)
+                result = runner.chat("hl_cto", "ask engineering")
+
+        self.assertEqual(result.final_response, "Engineering replied.")
+        self.assertEqual(
+            [(message.sender, message.recipient, message.body) for message in result.transcript],
+            [
+                ("user", "hl_cto", "ask engineering"),
+                ("hl_cto", "hl_backend_engineer", "team status"),
+                ("hl_cto", "hl_frontend_engineer", "team status"),
+            ],
+        )
+        self.assertIn("hl_backend_engineer replied: Backend replied.", prompts[-1])
+        self.assertIn("hl_frontend_engineer replied: Frontend replied.", prompts[-1])
         self.assertEqual(runner.sessions["hl_cto"], "cto-session")
 
     def test_runner_send_all_continues_after_blocked_recipient(self) -> None:
