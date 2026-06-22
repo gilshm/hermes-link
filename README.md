@@ -198,7 +198,7 @@ normal delegation and ownership transfer:
 
 ```text
 mode=send     # default: ask the target for help and return the response
-mode=handoff  # target takes over and answers the user directly
+mode=handoff  # target takes over asynchronously; inspect by thread id/log
 ```
 
 The skill also documents a text fallback:

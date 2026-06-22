@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import uuid
 from pathlib import Path
@@ -75,17 +76,20 @@ class RealHermesAgentTests(unittest.TestCase):
                 "Use the route_message tool exactly once. Set from_agent to hl_ceo, "
                 "to to hl_cto, mode to handoff, and body to: "
                 f"Please answer the user directly with {run_id} and HERMES_PLUGIN_HANDOFF_DONE. "
-                "After the tool returns, output the tool result.",
+                "After the tool returns, output only the handoff acceptance and thread id. "
+                "Do not wait for or summarize the CTO result.",
                 extra_env={"HERMES_LINK_LOG": str(log_path)},
             )
-            events = log_path.read_text(encoding="utf-8")
+            events = _wait_for_log_text(log_path, '"event": "final"', timeout=TIMEOUT_SECONDS * 3)
 
         self.assertNotIn("[TOOL_ERROR]", completed.stdout)
-        self.assertIn(run_id, completed.stdout)
-        self.assertIn("HERMES_PLUGIN_HANDOFF_DONE", completed.stdout)
+        self.assertIn("Handoff accepted", completed.stdout)
         self.assertIn('"event": "handoff"', events)
+        self.assertIn('"event": "final"', events)
         self.assertIn('"from_agent": "hl_ceo"', events)
         self.assertIn('"to_agent": "hl_cto"', events)
+        self.assertIn(run_id, events)
+        self.assertIn("HERMES_PLUGIN_HANDOFF_DONE", events)
 
     def test_hermes_link_cli_routes_hl_ceo_to_hl_advisor_with_skill_and_org(self) -> None:
         completed = subprocess.run(
@@ -895,6 +899,18 @@ def _recent_session_ids(command: str, limit: int = 8) -> list[str]:
             f"stderr:\n{completed.stderr}"
         )
     return re.findall(r"\b\d{8}_\d{6}_[0-9a-f]+\b", completed.stdout)[:limit]
+
+
+def _wait_for_log_text(path: Path, needle: str, *, timeout: int) -> str:
+    deadline = time.monotonic() + timeout
+    last_text = ""
+    while time.monotonic() < deadline:
+        if path.exists():
+            last_text = path.read_text(encoding="utf-8")
+            if needle in last_text:
+                return last_text
+        time.sleep(1)
+    raise AssertionError(f"log did not include {needle!r} before timeout:\n{last_text}")
 
 
 if __name__ == "__main__":

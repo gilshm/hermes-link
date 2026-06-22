@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,28 @@ def main() -> int:
         source_session_id=source_session_id,
         body=body,
     )
+    if mode == "handoff":
+        _start_handoff_worker(
+            repo_root=repo_root,
+            state_dir=state_dir,
+            log_path=_log_path(repo_root, state_dir),
+            payload={
+                "from_agent": from_agent,
+                "to_agent": to_agent,
+                "body": body,
+                "max_messages": max_messages,
+                "source_session_id": source_session_id,
+                "thread_id": thread_id,
+            },
+        )
+        print(
+            "Handoff accepted. "
+            f"Thread id: {thread_id}. "
+            f"{to_agent} owns the conversation now. "
+            "Do not summarize a target response; use the thread id to inspect completion."
+        )
+        return 0
+
     session_map = SessionMap(state_dir / "session-map.json")
     sessions = {}
     if source_session_id:
@@ -63,21 +86,12 @@ def main() -> int:
         event_log=event_log,
         thread_id=thread_id,
     )
-    if mode == "handoff":
-        result = runner.chat(
-            to_agent,
-            f"{from_agent} handed this conversation off to you:\n\n{body}\n\n"
-            "You now own the conversation. Answer the original user directly. "
-            "Do not send the answer back to the handing-off agent unless you need more help.",
-            max_messages=max_messages,
-        )
-    else:
-        result = runner.chat(
-            to_agent,
-            f"{from_agent} sent you this message:\n\n{body}",
-            max_messages=max_messages,
-            stop_recipient=from_agent,
-        )
+    result = runner.chat(
+        to_agent,
+        f"{from_agent} sent you this message:\n\n{body}",
+        max_messages=max_messages,
+        stop_recipient=from_agent,
+    )
     print(_format_transcript(result, final_agent=to_agent))
     if source_session_id:
         for agent, session_id in runner.sessions.items():
@@ -110,6 +124,45 @@ def _format_transcript(result, *, final_agent: str) -> str:
         lines.append(f"{message.sender} -> {message.recipient}: {message.body}")
     lines.append(f"Final from {final_agent}: {result.final_response}")
     return "\n".join(lines)
+
+
+def _start_handoff_worker(
+    *,
+    repo_root: Path,
+    state_dir: Path,
+    log_path: Path,
+    payload: dict[str, Any],
+) -> None:
+    handoff_dir = state_dir / "handoffs"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+    thread_id = str(payload["thread_id"])
+    payload_path = handoff_dir / f"{_safe_filename(thread_id)}.json"
+    stdout_path = handoff_dir / f"{_safe_filename(thread_id)}.out"
+    stderr_path = handoff_dir / f"{_safe_filename(thread_id)}.err"
+    payload_path.write_text(
+        json.dumps(
+            {
+                **payload,
+                "repo_root": str(repo_root),
+                "state_dir": str(state_dir),
+                "log_path": str(log_path),
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    with stdout_path.open("a", encoding="utf-8") as stdout_file, stderr_path.open("a", encoding="utf-8") as stderr_file:
+        subprocess.Popen(
+            [sys.executable, "-m", "hermes_link.handoff_runner", str(payload_path)],
+            cwd=repo_root,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            start_new_session=True,
+        )
+
+
+def _safe_filename(value: str) -> str:
+    return "".join(char if char.isalnum() or char in "._-" else "_" for char in value)
 
 
 def _state_dir(repo_root: Path) -> Path:

@@ -30,7 +30,7 @@ ROUTE_MESSAGE_SCHEMA = {
             "mode": {
                 "type": "string",
                 "enum": ["send", "handoff"],
-                "description": "Use send to ask the target for help. Use handoff when the target should take over and answer the user directly. Defaults to send.",
+                "description": "Use send to ask the target for help. Use handoff when the target should take over asynchronously and answer in the Hermes Link trace/log. Defaults to send.",
             },
             "max_messages": {
                 "type": "integer",
