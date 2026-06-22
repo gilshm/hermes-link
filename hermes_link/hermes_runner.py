@@ -223,7 +223,7 @@ class HermesRunner:
                 f"stderr:\n{completed.stderr}"
             )
 
-        session_id = self._session_id_from_output(command, completed.stdout)
+        session_id = self._session_id_from_output(command, completed.stdout, resumed_session_id=self._sessions.get(agent))
         self._sessions[agent] = session_id
         return AgentTurn(agent=agent, session_id=session_id, response=_clean_response(completed.stdout))
 
@@ -327,9 +327,11 @@ class HermesRunner:
                 fields.setdefault("thread_id", self._thread_id)
             self._event_log.write(event, **fields)
 
-    def _session_id_from_output(self, command: str, output: str) -> str:
+    def _session_id_from_output(self, command: str, output: str, *, resumed_session_id: str | None = None) -> str:
         match = _SESSION_RE.search(output)
         if match is None:
+            if resumed_session_id is not None:
+                return resumed_session_id
             return self._latest_session_id(command)
         return match.group(1)
 

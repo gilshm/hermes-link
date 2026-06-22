@@ -134,6 +134,56 @@ class AgentCommsTests(unittest.TestCase):
         self.assertIn("-r", calls[2])
         self.assertEqual(calls[2][calls[2].index("-r") + 1], "session-a")
 
+    def test_runner_keeps_resumed_session_when_output_omits_session_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND agent_id: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 6",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            calls: list[list[str]] = []
+            outputs = [
+                "session_id: session-a\nSEND hl_advisor: one",
+                "session_id: session-b\nSEND hl_ceo: two",
+                "SEND hl_advisor: three",
+                "session_id: session-b\nfinal answer",
+                "final to user",
+            ]
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                calls.append(args)
+                if args[1:3] == ["sessions", "list"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="20260622_000000_wrong", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout=outputs.pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                runner = HermesRunner(org, cwd=root)
+                result = runner.chat("hl_ceo", "start")
+
+        self.assertEqual(result.turns[2].session_id, "session-a")
+        self.assertEqual(runner.sessions["hl_ceo"], "session-a")
+        self.assertEqual(calls[2][calls[2].index("-r") + 1], "session-a")
+        self.assertFalse(any(call[1:3] == ["sessions", "list"] for call in calls))
+
     def test_runner_keeps_parallel_conversations_isolated(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
