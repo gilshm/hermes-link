@@ -166,6 +166,39 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertNotIn('"to_agent": "hl_frontend_engineer"', events)
         self.assertIn(run_id, events)
 
+    def test_hermes_link_doctor_live_route_matrix_checks_real_route(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            org = _write_two_agent_org(Path(tmpdir))
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "doctor",
+                    "--org",
+                    str(org),
+                    "--live-route-matrix",
+                    "--route-from",
+                    "hl_ceo",
+                    "--route-to",
+                    "hl_advisor",
+                    "--timeout",
+                    str(TIMEOUT_SECONDS),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS * 3,
+                cwd=REPO_ROOT,
+            )
+
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"doctor live route matrix failed with exit code {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+        )
+        self.assertIn("OK live route hl_ceo -> hl_advisor: allowed: hl_ceo -> hl_advisor", completed.stdout)
+
     def test_hermes_link_cli_runs_parallel_conversations(self) -> None:
         run_ids = [f"HERMES_PARALLEL_{uuid.uuid4().hex}" for _ in range(2)]
 
@@ -820,6 +853,32 @@ def _assert_parallel_traces_are_isolated(conversations: list[dict[str, str]], lo
 
 def _write_policy_block_org(root: Path) -> Path:
     return _write_strict_org(root)
+
+
+def _write_two_agent_org(root: Path) -> Path:
+    skill = root / "skills" / "agent-comms" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("Use SEND agent_id: message.", encoding="utf-8")
+    org = root / "config" / "org.yaml"
+    org.parent.mkdir()
+    org.write_text(
+        "\n".join(
+            [
+                "agents:",
+                "  hl_ceo:",
+                "    command: hl_ceo",
+                "    expertise: Executive sender",
+                "  hl_advisor:",
+                "    command: hl_advisor",
+                "    expertise: Advisor recipient",
+                "    manager: hl_ceo",
+                "routing: flat",
+                "skill: skills/agent-comms/SKILL.md",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return org
 
 
 def _write_strict_org(root: Path) -> Path:

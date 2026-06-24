@@ -64,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     doctor.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
     doctor.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
     doctor.add_argument("--check-agents", action="store_true", help="Run live smoke prompts for configured agents")
+    doctor.add_argument("--route-matrix", action="store_true", help="Show static allowed/blocked routes from org policy")
+    doctor.add_argument("--live-route-matrix", action="store_true", help="Ask real agents to emit SEND directives and verify route policy behavior")
+    doctor.add_argument("--route-from", help="Limit route matrix checks to one sender agent")
+    doctor.add_argument("--route-to", help="Limit route matrix checks to one recipient agent")
     doctor.add_argument("--timeout", type=int, default=30)
 
     org_parser = subparsers.add_parser("org", help="Org configuration commands")
@@ -136,6 +140,10 @@ def main(argv: list[str] | None = None) -> int:
             repo_root=REPO_ROOT,
             hermes_home=args.hermes_home,
             check_agents=args.check_agents,
+            route_matrix=args.route_matrix,
+            live_route_matrix=args.live_route_matrix,
+            route_from=args.route_from,
+            route_to=args.route_to,
             timeout=args.timeout,
         )
         for check in checks:

@@ -314,6 +314,25 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("FAIL org config: missing", output.getvalue())
 
+    def test_doctor_command_can_print_route_matrix(self) -> None:
+        output = io.StringIO()
+
+        with (
+            mock.patch("sys.stdout", output),
+            mock.patch("hermes_link.cli.run_doctor") as doctor,
+        ):
+            doctor.return_value = [
+                SimpleNamespace(ok=True, name="route hl_advisor -> hl_backend_engineer", detail="blocked by policy"),
+                SimpleNamespace(ok=True, name="route hl_advisor -> hl_ceo", detail="allowed"),
+            ]
+            exit_code = main(["doctor", "--route-matrix", "--route-from", "hl_advisor"])
+
+        self.assertEqual(exit_code, 0)
+        doctor.assert_called_once()
+        self.assertTrue(doctor.call_args.kwargs["route_matrix"])
+        self.assertEqual(doctor.call_args.kwargs["route_from"], "hl_advisor")
+        self.assertIn("OK route hl_advisor -> hl_backend_engineer: blocked by policy", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -337,6 +337,22 @@ bin/hermes_link doctor
 bin/hermes_link doctor --check-agents
 ```
 
+Audit the current route policy without calling agents:
+
+```bash
+bin/hermes_link doctor --route-matrix
+bin/hermes_link doctor --route-matrix --route-from hl_advisor
+```
+
+Run the same audit through real Hermes agents:
+
+```bash
+bin/hermes_link doctor --live-route-matrix --route-from hl_ceo --route-to hl_advisor
+```
+
+`--route-from` and `--route-to` are optional filters. Without filters, the
+matrix checks every configured sender/recipient pair except self-routes.
+
 ## Logs
 
 Hermes Link writes routed events to `.hermes-link/events.jsonl`.
