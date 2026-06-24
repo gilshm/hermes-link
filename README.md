@@ -361,12 +361,14 @@ Show the log:
 
 ```bash
 bin/hermes_link log
+bin/hermes_link log --max-body-chars 240
 ```
 
 Show one conversation trace by thread id or source session id:
 
 ```bash
 bin/hermes_link trace <thread_id>
+bin/hermes_link trace <thread_id> --max-body-chars 240
 ```
 
 Export the same trace as a Mermaid sequence diagram:
@@ -379,6 +381,7 @@ Watch messages live:
 
 ```bash
 bin/hermes_link log --watch
+bin/hermes_link log --watch --max-body-chars 240
 ```
 
 Force color output:

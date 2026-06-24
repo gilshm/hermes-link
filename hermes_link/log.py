@@ -44,29 +44,29 @@ def trace_events(path: Path, thread_id: str) -> list[dict[str, Any]]:
     return [event for event in iter_events(path) if _matches_thread(event, thread_id)]
 
 
-def format_event(event: dict[str, Any], *, color: bool = False) -> str:
+def format_event(event: dict[str, Any], *, color: bool = False, max_body_chars: int | None = None) -> str:
     kind = event.get("event", "event")
     prefix = f"{_format_timestamp(event.get('ts'))} [{_short_thread(event)}]"
     if kind == "message":
         arrow = _paint(f"{event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "36", color)
         return (
             f"{_paint(prefix, '90', color)} {_paint('├─', '34', color)} {arrow}: "
-            f"{event.get('body', '')}"
+            f"{_shorten(event.get('body', ''), max_body_chars)}"
         )
     if kind == "handoff":
         arrow = _paint(f"handoff {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "33", color)
         return (
             f"{_paint(prefix, '90', color)} {_paint('╞═', '33', color)} {arrow}: "
-            f"{event.get('body', '')}"
+            f"{_shorten(event.get('body', ''), max_body_chars)}"
         )
     if kind == "final":
         agent = _paint(f"{event.get('agent', '?')} final", "32", color)
-        return f"{_paint(prefix, '90', color)} {_paint('└─', '32', color)} {agent}: {event.get('body', '')}"
+        return f"{_paint(prefix, '90', color)} {_paint('└─', '32', color)} {agent}: {_shorten(event.get('body', ''), max_body_chars)}"
     if kind == "bridge_request":
         arrow = _paint(f"bridge {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "33", color)
         return (
             f"{_paint(prefix, '90', color)} {_paint('┌─', '33', color)} {arrow}: "
-            f"{event.get('body', '')}"
+            f"{_shorten(event.get('body', ''), max_body_chars)}"
         )
     if kind == "scatter_start":
         recipients = ", ".join(event.get("recipients", []))
@@ -76,31 +76,31 @@ def format_event(event: dict[str, Any], *, color: bool = False) -> str:
         arrow = _paint(f"scatter {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "35", color)
         return (
             f"{_paint(prefix, '90', color)} {_paint('├─', '35', color)} {arrow}: "
-            f"{event.get('body', '')}"
+            f"{_shorten(event.get('body', ''), max_body_chars)}"
         )
     if kind == "scatter_result":
         arrow = _paint(f"gather {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "32", color)
         return (
             f"{_paint(prefix, '90', color)} {_paint('├─', '32', color)} {arrow}: "
-            f"{event.get('body', '')}"
+            f"{_shorten(event.get('body', ''), max_body_chars)}"
         )
     if kind == "scatter_error":
         arrow = _paint(f"scatter failed {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
-        return f"{_paint(prefix, '90', color)} {_paint('!─', '31', color)} {arrow}: {event.get('reason', '')}"
+        return f"{_paint(prefix, '90', color)} {_paint('!─', '31', color)} {arrow}: {_shorten(event.get('reason', ''), max_body_chars)}"
     if kind == "blocked":
         arrow = _paint(f"blocked {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
-        return f"{_paint(prefix, '90', color)} {_paint('!─', '31', color)} {arrow}: {event.get('reason', '')}"
+        return f"{_paint(prefix, '90', color)} {_paint('!─', '31', color)} {arrow}: {_shorten(event.get('reason', ''), max_body_chars)}"
     return json.dumps(event, sort_keys=True)
 
 
-def format_trace(events: list[dict[str, Any]], *, thread_id: str, color: bool = False) -> str:
+def format_trace(events: list[dict[str, Any]], *, thread_id: str, color: bool = False, max_body_chars: int | None = None) -> str:
     if not events:
         return f"No events found for trace: {thread_id}"
 
     lines = [f"Trace {thread_id}"]
     for index, event in enumerate(events):
         connector = "└─" if index == len(events) - 1 else "├─"
-        lines.append(_format_trace_line(event, connector=connector, color=color))
+        lines.append(_format_trace_line(event, connector=connector, color=color, max_body_chars=max_body_chars))
     return "\n".join(lines)
 
 
@@ -187,12 +187,12 @@ def _mermaid_text(value: Any) -> str:
     return text.replace("\\", "\\\\").replace(":", "#58;")
 
 
-def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) -> str:
+def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool, max_body_chars: int | None = None) -> str:
     timestamp = _paint(_format_timestamp(event.get("ts")), "90", color)
     connector = _paint(connector, "34", color)
     kind = event.get("event")
     if kind == "bridge_request":
-        body = event.get("body", "")
+        body = _shorten(event.get("body", ""), max_body_chars)
         route = _paint(f"bridge {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "33", color)
         return f"{timestamp} {connector} {route}: {body}"
     if kind == "message":
@@ -203,7 +203,7 @@ def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) ->
             "36",
             color,
         )
-        return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+        return f"{timestamp} {connector} {route}: {_shorten(event.get('body', ''), max_body_chars)}"
     if kind == "handoff":
         from_session = _session_suffix(event.get("from_session_id"))
         to_session = _session_suffix(event.get("to_session_id"))
@@ -212,7 +212,7 @@ def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) ->
             "33",
             color,
         )
-        return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+        return f"{timestamp} {connector} {route}: {_shorten(event.get('body', ''), max_body_chars)}"
     if kind == "scatter_start":
         recipients = ", ".join(event.get("recipients", []))
         route = _paint(f"scatter {event.get('from_agent', '?')} -> [{recipients}]", "35", color)
@@ -224,7 +224,7 @@ def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) ->
             "35",
             color,
         )
-        return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+        return f"{timestamp} {connector} {route}: {_shorten(event.get('body', ''), max_body_chars)}"
     if kind == "scatter_result":
         from_session = _session_suffix(event.get("from_session_id"))
         to_session = _session_suffix(event.get("to_session_id"))
@@ -233,16 +233,16 @@ def _format_trace_line(event: dict[str, Any], *, connector: str, color: bool) ->
             "32",
             color,
         )
-        return f"{timestamp} {connector} {route}: {event.get('body', '')}"
+        return f"{timestamp} {connector} {route}: {_shorten(event.get('body', ''), max_body_chars)}"
     if kind == "scatter_error":
         route = _paint(f"scatter failed {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
-        return f"{timestamp} {connector} {route}: {event.get('reason', '')}"
+        return f"{timestamp} {connector} {route}: {_shorten(event.get('reason', ''), max_body_chars)}"
     if kind == "final":
         agent = _paint(f"{event.get('agent', '?')} final{_session_suffix(event.get('session_id'))}", "32", color)
-        return f"{timestamp} {connector} {agent}: {event.get('body', '')}"
+        return f"{timestamp} {connector} {agent}: {_shorten(event.get('body', ''), max_body_chars)}"
     if kind == "blocked":
         route = _paint(f"blocked {event.get('from_agent', '?')} -> {event.get('to_agent', '?')}", "31", color)
-        return f"{timestamp} {connector} {route}: {event.get('reason', '')}"
+        return f"{timestamp} {connector} {route}: {_shorten(event.get('reason', ''), max_body_chars)}"
     return f"{timestamp} {connector} {json.dumps(event, sort_keys=True)}"
 
 
@@ -257,3 +257,12 @@ def _paint(value: str, code: str, enabled: bool) -> str:
     if not enabled:
         return value
     return f"\033[{code}m{value}\033[0m"
+
+
+def _shorten(value: Any, max_chars: int | None) -> str:
+    text = str(value or "")
+    if max_chars is None or max_chars < 0 or len(text) <= max_chars:
+        return text
+    if max_chars == 0:
+        return "..."
+    return f"{text[:max_chars]}..."

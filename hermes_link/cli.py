@@ -36,12 +36,14 @@ def main(argv: list[str] | None = None) -> int:
     log.add_argument("--watch", "-w", action="store_true")
     log.add_argument("--interval", type=float, default=1.0)
     log.add_argument("--color", choices=["auto", "always", "never"], default="auto")
+    log.add_argument("--max-body-chars", type=int, default=None, help="Only show the first N characters of message bodies")
 
     trace = subparsers.add_parser("trace", help="Show one routed conversation trace")
     trace.add_argument("thread_id")
     trace.add_argument("--path", type=Path, default=default_log_path(REPO_ROOT))
     trace.add_argument("--format", choices=["text", "mermaid"], default="text")
     trace.add_argument("--color", choices=["auto", "always", "never"], default="auto")
+    trace.add_argument("--max-body-chars", type=int, default=None, help="Only show the first N characters of message bodies")
 
     agents = subparsers.add_parser("agents", help="Show configured org agents")
     agents.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
@@ -101,18 +103,20 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "log":
         color = _use_color(args.color)
+        max_body_chars = _validate_max_body_chars(args.max_body_chars)
         if args.watch:
-            return _watch_log(args.path, interval=args.interval, color=color)
+            return _watch_log(args.path, interval=args.interval, color=color, max_body_chars=max_body_chars)
         for event in iter_events(args.path):
-            print(format_event(event, color=color))
+            print(format_event(event, color=color, max_body_chars=max_body_chars))
         return 0
     if args.command == "trace":
         color = _use_color(args.color)
+        max_body_chars = _validate_max_body_chars(args.max_body_chars)
         events = trace_events(args.path, args.thread_id)
         if args.format == "mermaid":
             print(format_trace_mermaid(events, thread_id=args.thread_id))
         else:
-            print(format_trace(events, thread_id=args.thread_id, color=color))
+            print(format_trace(events, thread_id=args.thread_id, color=color, max_body_chars=max_body_chars))
         return 0
     if args.command == "agents":
         org = load_org(args.org)
@@ -287,14 +291,14 @@ def _append_agent_tree(
         )
 
 
-def _watch_log(path: Path, *, interval: float, color: bool) -> int:
+def _watch_log(path: Path, *, interval: float, color: bool, max_body_chars: int | None = None) -> int:
     seen = 0
     while True:
         if path.exists():
             lines = path.read_text(encoding="utf-8").splitlines()
             for line in lines[seen:]:
                 if line.strip():
-                    print(format_event(json.loads(line), color=color), flush=True)
+                    print(format_event(json.loads(line), color=color, max_body_chars=max_body_chars), flush=True)
             seen = len(lines)
         time.sleep(interval)
 
@@ -305,6 +309,12 @@ def _use_color(mode: str) -> bool:
     if mode == "never":
         return False
     return __import__("sys").stdout.isatty()
+
+
+def _validate_max_body_chars(value: int | None) -> int | None:
+    if value is not None and value < 0:
+        raise ValueError("--max-body-chars must be 0 or greater")
+    return value
 
 
 if __name__ == "__main__":

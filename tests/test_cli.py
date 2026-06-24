@@ -38,6 +38,19 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("\033[", output.getvalue())
 
+    def test_log_command_can_truncate_message_bodies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            EventLog(path).write("message", thread_id="thread-1", from_agent="hl_ceo", to_agent="hl_advisor", body="abcdefghijklmnopqrstuvwxyz")
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(["log", "--path", str(path), "--max-body-chars", "5"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("abcde...", output.getvalue())
+        self.assertNotIn("fghijklmnopqrstuvwxyz", output.getvalue())
+
     def test_trace_command_prints_matching_thread(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "events.jsonl"
@@ -52,6 +65,19 @@ class CliTests(unittest.TestCase):
         self.assertIn("Trace thread-1", output.getvalue())
         self.assertIn("hello", output.getvalue())
         self.assertNotIn("ignore", output.getvalue())
+
+    def test_trace_command_can_truncate_message_bodies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            EventLog(path).write("message", thread_id="thread-1", from_agent="hl_ceo", to_agent="hl_advisor", body="abcdefghijklmnopqrstuvwxyz")
+            output = io.StringIO()
+
+            with mock.patch("sys.stdout", output):
+                exit_code = main(["trace", "thread-1", "--path", str(path), "--max-body-chars", "7"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("abcdefg...", output.getvalue())
+        self.assertNotIn("hijklmnopqrstuvwxyz", output.getvalue())
 
     def test_trace_command_can_print_mermaid(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

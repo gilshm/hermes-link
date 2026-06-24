@@ -42,6 +42,22 @@ class LogTests(unittest.TestCase):
 
         self.assertIn("\033[", formatted)
 
+    def test_format_event_can_truncate_body(self) -> None:
+        formatted = format_event(
+            {
+                "event": "message",
+                "ts": 1,
+                "thread_id": "thread",
+                "from_agent": "hl_ceo",
+                "to_agent": "hl_advisor",
+                "body": "abcdefghijklmnopqrstuvwxyz",
+            },
+            max_body_chars=8,
+        )
+
+        self.assertIn("abcdefgh...", formatted)
+        self.assertNotIn("ijklmnopqrstuvwxyz", formatted)
+
     def test_trace_events_filters_and_formats_thread(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "events.jsonl"
@@ -65,6 +81,24 @@ class LogTests(unittest.TestCase):
         self.assertIn("Trace thread-a", formatted)
         self.assertIn("bridge hl_ceo -> hl_advisor: start", formatted)
         self.assertIn("hl_advisor(12345678) -> hl_ceo(87654321): reply", formatted)
+
+    def test_format_trace_can_truncate_body(self) -> None:
+        formatted = format_trace(
+            [
+                {
+                    "event": "final",
+                    "ts": 1,
+                    "thread_id": "thread-a",
+                    "agent": "hl_ceo",
+                    "body": "0123456789abcdef",
+                }
+            ],
+            thread_id="thread-a",
+            max_body_chars=6,
+        )
+
+        self.assertIn("012345...", formatted)
+        self.assertNotIn("6789abcdef", formatted)
 
     def test_trace_formats_scatter_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
