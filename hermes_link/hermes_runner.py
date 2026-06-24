@@ -324,14 +324,15 @@ class HermesRunner:
                 )
                 prompt = self._agent_prompt(
                     f"{sender} sent you this scatter-gather message:\n\n{send.body}\n\n"
-                    "Answer normally. Do not output SEND unless you must delegate.",
+                    "Answer normally. If you must delegate to your own reports or another permitted agent, "
+                    "output SEND or SEND_ALL.",
                     allow_tools=False,
                 )
-                futures[executor.submit(self._run_agent, send.recipient, prompt, self._org.scatter_timeout)] = (offset + index, send)
+                futures[executor.submit(self._run_scatter_recipient, sender, send.recipient, prompt)] = (offset + index, send)
             for future in concurrent.futures.as_completed(futures):
                 index, send = futures[future]
                 try:
-                    turn = future.result()
+                    nested = future.result()
                 except subprocess.TimeoutExpired as exc:
                     response = f"Timed out after {exc.timeout} seconds."
                     self._log(
@@ -357,12 +358,84 @@ class HermesRunner:
                         "scatter_result",
                         from_agent=send.recipient,
                         to_agent=sender,
-                        from_session_id=turn.session_id,
+                        from_session_id=nested.turn.session_id if nested.turn is not None else None,
                         to_session_id=self._sessions.get(sender),
-                        body=turn.response,
+                        body=nested.response,
                     )
-                    results[index] = ScatterItem(send.recipient, send.body, True, turn.response, turn)
+                    results[index] = ScatterItem(send.recipient, send.body, True, nested.response, nested.turn)
         return [result for result in results if result is not None]
+
+    def _run_scatter_recipient(self, sender: str, recipient: str, prompt: str) -> ScatterItem:
+        turn = self._run_agent(recipient, prompt, self._org.scatter_timeout)
+        nested = parse_send_directive(turn.response)
+        if nested is None:
+            return ScatterItem(recipient, prompt, True, turn.response, turn)
+
+        if isinstance(nested, HandoffDirective):
+            return ScatterItem(
+                recipient,
+                prompt,
+                False,
+                f"{recipient} emitted HANDOFF inside scatter-gather; nested handoff is not supported.",
+                turn,
+            )
+
+        if isinstance(nested, SendAllDirective):
+            nested_items = self._run_scatter(recipient, nested)
+            final_prompt = self._agent_prompt(
+                f"You are replying to {sender}'s scatter-gather request.\n\n"
+                "Your delegated scatter-gather results:\n\n"
+                f"{_format_scatter_results(nested_items)}\n\n"
+                "Now answer the original scatter-gather request as your own final response. "
+                "Summarize successful replies and mention failures. Do not output SEND or SEND_ALL.",
+                allow_tools=False,
+            )
+            final_turn = self._run_agent(recipient, final_prompt, self._org.scatter_timeout)
+            return ScatterItem(recipient, prompt, True, final_turn.response, final_turn)
+
+        nested_recipient = self._resolve_agent(nested.recipient)
+        if not self._org.can_route(recipient, nested_recipient):
+            denial = _policy_denial(recipient, nested_recipient)
+            self._log(
+                "blocked",
+                from_agent=recipient,
+                to_agent=nested_recipient,
+                from_session_id=turn.session_id,
+                body=nested.body,
+                reason=denial,
+            )
+            return ScatterItem(recipient, prompt, False, denial, turn)
+
+        self._log(
+            "message",
+            from_agent=recipient,
+            to_agent=nested_recipient,
+            from_session_id=turn.session_id,
+            to_session_id=self._sessions.get(nested_recipient),
+            body=nested.body,
+        )
+        nested_prompt = self._agent_prompt(
+            f"{recipient} sent you this message while answering {sender}'s scatter-gather request:\n\n{nested.body}",
+            allow_tools=False,
+        )
+        nested_turn = self._run_agent(nested_recipient, nested_prompt, self._org.scatter_timeout)
+        self._log(
+            "message",
+            from_agent=nested_recipient,
+            to_agent=recipient,
+            from_session_id=nested_turn.session_id,
+            to_session_id=self._sessions.get(recipient),
+            body=nested_turn.response,
+        )
+        final_prompt = self._agent_prompt(
+            f"You are replying to {sender}'s scatter-gather request.\n\n"
+            f"{nested_recipient} replied to you:\n\n{nested_turn.response}\n\n"
+            "Now answer the original scatter-gather request as your own final response. "
+            "Do not output SEND or SEND_ALL.",
+            allow_tools=False,
+        )
+        final_turn = self._run_agent(recipient, final_prompt, self._org.scatter_timeout)
+        return ScatterItem(recipient, prompt, True, final_turn.response, final_turn)
 
     def _log(self, event: str, **fields: object) -> None:
         if self._event_log is not None:

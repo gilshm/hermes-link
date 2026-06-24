@@ -945,6 +945,85 @@ class AgentCommsTests(unittest.TestCase):
         self.assertIn("hl_backend_engineer replied: Backend replied.", prompts[-1])
         self.assertIn("hl_frontend_engineer replied: Frontend replied.", prompts[-1])
 
+    def test_runner_executes_nested_send_all_from_scatter_recipient(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skill_path = root / "skills" / "agent-comms" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("Use SEND_ALL @direct_reports: message.", encoding="utf-8")
+            org_path = root / "config" / "org.yaml"
+            org_path.parent.mkdir()
+            org_path.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        "  hl_advisor:",
+                        "    command: hl_advisor",
+                        "    manager: hl_ceo",
+                        "  hl_product_manager:",
+                        "    command: hl_product_manager",
+                        "    manager: hl_ceo",
+                        "  hl_cto:",
+                        "    command: hl_cto",
+                        "    manager: hl_ceo",
+                        "  hl_backend_engineer:",
+                        "    command: hl_backend_engineer",
+                        "    manager: hl_cto",
+                        "  hl_frontend_engineer:",
+                        "    command: hl_frontend_engineer",
+                        "    manager: hl_cto",
+                        "skill: skills/agent-comms/SKILL.md",
+                        "max_messages: 4",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            org = load_org(org_path)
+            outputs = {
+                "hl_ceo": [
+                    "session_id: ceo-session\nSEND_ALL @direct_reports: give status",
+                    "session_id: ceo-session\nEveryone reported through the org tree.",
+                ],
+                "hl_advisor": ["session_id: advisor-session\nAdvisor status."],
+                "hl_product_manager": ["session_id: pm-session\nPM status."],
+                "hl_cto": [
+                    "session_id: cto-session\nSEND_ALL @direct_reports: engineering status",
+                    "session_id: cto-session\nCTO plus engineering status.",
+                ],
+                "hl_backend_engineer": ["session_id: backend-session\nBackend status."],
+                "hl_frontend_engineer": ["session_id: frontend-session\nFrontend status."],
+            }
+            prompts = []
+
+            def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                prompts.append((args[0], args[-1]))
+                return subprocess.CompletedProcess(args, 0, stdout=outputs[args[0]].pop(0), stderr="")
+
+            with (
+                mock.patch("hermes_link.hermes_runner.shutil.which", return_value="/bin/hermes"),
+                mock.patch("subprocess.run", side_effect=fake_run),
+            ):
+                runner = HermesRunner(org, cwd=root)
+                result = runner.chat("hl_ceo", "collect org status")
+
+        self.assertEqual(result.final_response, "Everyone reported through the org tree.")
+        self.assertEqual(
+            [(message.sender, message.recipient, message.body) for message in result.transcript],
+            [
+                ("user", "hl_ceo", "collect org status"),
+                ("hl_ceo", "hl_advisor", "give status"),
+                ("hl_ceo", "hl_cto", "give status"),
+                ("hl_ceo", "hl_product_manager", "give status"),
+            ],
+        )
+        self.assertTrue(any(agent == "hl_backend_engineer" for agent, _prompt in prompts))
+        self.assertTrue(any(agent == "hl_frontend_engineer" for agent, _prompt in prompts))
+        self.assertTrue(any(agent == "hl_cto" and "hl_backend_engineer replied: Backend status." in prompt for agent, prompt in prompts))
+        self.assertTrue(any(agent == "hl_ceo" and "hl_cto replied: CTO plus engineering status." in prompt for agent, prompt in prompts))
+        self.assertEqual(runner.sessions["hl_cto"], "cto-session")
+
     def test_runner_expands_manager_peers_and_team_broadcasts(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
