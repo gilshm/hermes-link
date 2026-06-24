@@ -521,6 +521,75 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertIn("gather hl_backend_engineer", trace.stdout)
         self.assertIn("gather hl_frontend_engineer", trace.stdout)
 
+    def test_hermes_link_cli_executes_nested_send_all_from_scatter_recipient(self) -> None:
+        run_id = f"HERMES_NESTED_SEND_ALL_{uuid.uuid4().hex}"
+        thread_id = f"live-nested-send-all-{uuid.uuid4().hex[:8]}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "nested-send-all-events.jsonl"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "chat",
+                    "hl_ceo",
+                    "Output exactly one SEND_ALL directive and no extra text. Use this exact directive:\n"
+                    f"SEND_ALL @direct_reports: Reply normally with {run_id} and your role marker. "
+                    "Advisor must include HERMES_NESTED_ADVISOR. Product manager must include HERMES_NESTED_PRODUCT. "
+                    "CTO must output exactly this nested directive and no extra text: "
+                    f"SEND_ALL @direct_reports: Reply normally with {run_id} and your engineering role marker. "
+                    "Backend must include HERMES_NESTED_BACKEND. Frontend must include HERMES_NESTED_FRONTEND.\n"
+                    "After all direct reports are gathered, answer the user with "
+                    f"{run_id}, HERMES_NESTED_ADVISOR, HERMES_NESTED_PRODUCT, "
+                    "HERMES_NESTED_BACKEND, HERMES_NESTED_FRONTEND, and HERMES_NESTED_DONE.",
+                    "--max-messages",
+                    "4",
+                    "--timeout",
+                    str(TIMEOUT_SECONDS),
+                    "--thread-id",
+                    thread_id,
+                    "--log-path",
+                    str(log_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS * 6,
+            )
+            if completed.returncode != 0:
+                raise AssertionError(
+                    f"nested SEND_ALL cli route failed with exit code {completed.returncode}\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}"
+                )
+            trace = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "trace",
+                    thread_id,
+                    "--path",
+                    str(log_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS,
+            )
+
+        self.assertIn("thread_id: " + thread_id, completed.stdout)
+        self.assertIn("HERMES_NESTED_DONE", completed.stdout)
+        self.assertIn("HERMES_NESTED_ADVISOR", completed.stdout)
+        self.assertIn("HERMES_NESTED_PRODUCT", completed.stdout)
+        self.assertIn("HERMES_NESTED_BACKEND", completed.stdout)
+        self.assertIn("HERMES_NESTED_FRONTEND", completed.stdout)
+        self.assertEqual(trace.returncode, 0, trace.stderr)
+        self.assertIn("scatter hl_ceo -> [hl_advisor, hl_cto, hl_product_manager]", trace.stdout)
+        self.assertIn("scatter hl_cto -> [hl_backend_engineer, hl_frontend_engineer]", trace.stdout)
+        self.assertIn("gather hl_backend_engineer", trace.stdout)
+        self.assertIn("gather hl_frontend_engineer", trace.stdout)
+
     def test_hermes_link_cli_handoffs_to_target_agent(self) -> None:
         run_id = f"HERMES_HANDOFF_{uuid.uuid4().hex}"
         thread_id = f"live-handoff-{uuid.uuid4().hex[:8]}"
