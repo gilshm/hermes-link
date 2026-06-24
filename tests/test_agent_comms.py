@@ -62,6 +62,7 @@ class AgentCommsTests(unittest.TestCase):
         )
         self.assertEqual(org.agents["hl_ceo"].command, "hl_ceo")
         self.assertEqual(org.agents["hl_ceo"].title, "CEO")
+        self.assertEqual(org.agents["hl_backend_engineer"].capabilities, ("api", "data-models", "services", "reliability", "integrations"))
         self.assertEqual(org.agents["hl_advisor"].manager, "hl_ceo")
         self.assertEqual(org.agents["hl_backend_engineer"].team, "engineering")
         self.assertIn("decision maker", org.agents["hl_ceo"].expertise)
@@ -1254,9 +1255,13 @@ class AgentCommsTests(unittest.TestCase):
                         "  hl_ceo:",
                         "    command: hl_ceo",
                         "    expertise: Coordinator",
+                        "    capabilities:",
+                        "      - delegation",
                         "  hl_advisor:",
                         "    command: hl_advisor",
                         "    expertise: Review specialist",
+                        "    capabilities:",
+                        "      - risk-review",
                         "skill: skills/agent-comms/SKILL.md",
                     ]
                 ),
@@ -1276,7 +1281,9 @@ class AgentCommsTests(unittest.TestCase):
                 HermesRunner(org, cwd=root).request_send("hl_ceo", "say hello")
 
         self.assertIn("- hl_ceo: hl_ceo. Coordinator", prompts[0])
+        self.assertIn("Capabilities: delegation.", prompts[0])
         self.assertIn("- hl_advisor: hl_advisor. Review specialist", prompts[0])
+        self.assertIn("Capabilities: risk-review.", prompts[0])
         self.assertIn("Mode: flat. Any configured agent may contact any other configured agent.", prompts[0])
 
 

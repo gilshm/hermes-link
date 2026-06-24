@@ -233,6 +233,8 @@ def _profile_description(agent) -> str:
         parts.append(agent.title)
     if agent.team:
         parts.append(f"{agent.team} team")
+    if agent.capabilities:
+        parts.append(f"Capabilities: {', '.join(agent.capabilities)}.")
     if agent.expertise:
         parts.append(agent.expertise)
     return " ".join(parts)

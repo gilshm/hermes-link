@@ -3,6 +3,10 @@ agents:
     command: hl_ceo
     title: CEO
     team: executive
+    capabilities:
+      - delegation
+      - executive-decision
+      - synthesis
     expertise: >
       First-contact executive and final decision maker. Good for understanding
       the user's goal, delegating to the right employee, resolving tradeoffs,
@@ -12,6 +16,10 @@ agents:
     title: Strategic Advisor
     team: executive
     manager: hl_ceo
+    capabilities:
+      - strategy
+      - risk-review
+      - critique
     expertise: >
       Independent senior advisor. Good for second opinions, risk spotting,
       strategy critique, and challenging assumptions before the CEO decides.
@@ -20,6 +28,10 @@ agents:
     title: CTO
     team: executive
     manager: hl_ceo
+    capabilities:
+      - architecture
+      - technical-planning
+      - engineering-leadership
     expertise: >
       Technical executive. Good for architecture direction, engineering
       tradeoffs, technical feasibility, and deciding what the engineering team
@@ -29,6 +41,10 @@ agents:
     title: Product Manager
     team: product
     manager: hl_ceo
+    capabilities:
+      - requirements
+      - prioritization
+      - product-scope
     expertise: >
       Product lead. Good for user needs, prioritization, requirements, scope,
       acceptance criteria, and turning vague ideas into concrete product work.
@@ -37,6 +53,12 @@ agents:
     title: Backend Engineer
     team: engineering
     manager: hl_cto
+    capabilities:
+      - api
+      - data-models
+      - services
+      - reliability
+      - integrations
     expertise: >
       Backend implementation specialist. Good for APIs, data models, services,
       reliability, integrations, and server-side debugging.
@@ -45,6 +67,12 @@ agents:
     title: Frontend Engineer
     team: engineering
     manager: hl_cto
+    capabilities:
+      - ui
+      - workflows
+      - accessibility
+      - client-architecture
+      - user-facing-polish
     expertise: >
       Frontend implementation specialist. Good for UI behavior, workflows,
       client-side architecture, accessibility, and user-facing polish.

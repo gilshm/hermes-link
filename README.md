@@ -30,9 +30,9 @@ The core flow is:
    user with the delegated context included.
 
 Agents are declared in [config/org.yaml](config/org.yaml). Each entry defines the
-Hermes command to run, the agent's expertise, and optional hierarchy metadata.
-That directory is shown to agents so they can choose the right collaborator
-instead of guessing from ids.
+Hermes command to run, structured capability tags, the agent's expertise, and
+optional hierarchy metadata. That directory is shown to agents so they can choose
+the right collaborator instead of guessing from ids.
 
 ## Install
 
@@ -87,6 +87,10 @@ agents:
     command: hl_ceo
     title: CEO
     team: executive
+    capabilities:
+      - delegation
+      - executive-decision
+      - synthesis
     expertise: >
       First-contact executive and final decision maker.
   hl_advisor:
@@ -94,6 +98,10 @@ agents:
     title: Strategic Advisor
     team: executive
     manager: hl_ceo
+    capabilities:
+      - strategy
+      - risk-review
+      - critique
     expertise: >
       Independent senior advisor.
   hl_cto:
@@ -101,6 +109,10 @@ agents:
     title: CTO
     team: executive
     manager: hl_ceo
+    capabilities:
+      - architecture
+      - technical-planning
+      - engineering-leadership
     expertise: >
       Technical executive.
   hl_product_manager:
@@ -108,6 +120,10 @@ agents:
     title: Product Manager
     team: product
     manager: hl_ceo
+    capabilities:
+      - requirements
+      - prioritization
+      - product-scope
     expertise: >
       Product lead.
   hl_backend_engineer:
@@ -115,6 +131,12 @@ agents:
     title: Backend Engineer
     team: engineering
     manager: hl_cto
+    capabilities:
+      - api
+      - data-models
+      - services
+      - reliability
+      - integrations
     expertise: >
       Backend implementation specialist.
   hl_frontend_engineer:
@@ -122,6 +144,12 @@ agents:
     title: Frontend Engineer
     team: engineering
     manager: hl_cto
+    capabilities:
+      - ui
+      - workflows
+      - accessibility
+      - client-architecture
+      - user-facing-polish
     expertise: >
       Frontend implementation specialist.
 
@@ -150,6 +178,12 @@ routing: flat
 
 Agents can route directly to another agent id, or to a topic such as `@review`.
 Topics resolve to their configured default agent.
+
+Capabilities are short tags that make agent selection more reliable than free
+text alone. Hermes Link displays them in the org directory shown to agents, in
+`bin/hermes_link agents`, and in `bin/hermes_link org graph`. Use capability
+names such as `api`, `requirements`, `architecture`, `accessibility`, or
+`risk-review` to make delegation intent explicit.
 
 Groups are multi-agent aliases for scatter-gather. A directive like
 `SEND_ALL @engineering: message` expands to every agent in the `engineering`

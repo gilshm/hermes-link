@@ -155,6 +155,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(first[:3], ["hermes", "profile", "create"])
         self.assertIn("--clone-from", first)
         self.assertIn("--description", first)
+        self.assertTrue(any("Capabilities: risk-review." in item for item in first))
 
     def test_create_profiles_from_org_skips_existing_profiles(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -188,12 +189,17 @@ def _write_org(root: Path) -> Path:
                 "    command: hl_ceo",
                 "    title: CEO",
                 "    team: executive",
+                "    capabilities:",
+                "      - delegation",
+                "      - synthesis",
                 "    expertise: Chief executive",
                 "  hl_advisor:",
                 "    command: hl_advisor",
                 "    title: Advisor",
                 "    team: executive",
                 "    manager: hl_ceo",
+                "    capabilities:",
+                "      - risk-review",
                 "    expertise: Strategic reviewer",
                 "skill: skills/agent-comms/SKILL.md",
             ]

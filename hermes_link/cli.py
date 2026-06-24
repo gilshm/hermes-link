@@ -117,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{name}")
             print(f"  command: {status.agent.command} ({'found' if status.command_available else 'missing'})")
             print(f"  expertise: {status.agent.expertise or 'not specified'}")
+            if status.agent.capabilities:
+                print(f"  capabilities: {', '.join(status.agent.capabilities)}")
             print(f"  skill installed: {yes_no(status.skill_installed)}")
             print(f"  plugin installed: {yes_no(status.plugin_installed)}")
             print(f"  plugin enabled: {yes_no(status.plugin_enabled)}")
@@ -260,6 +262,8 @@ def _append_agent_tree(
         details.append(f"team={agent.team}")
     if agent.manager:
         details.append(f"manager={agent.manager}")
+    if agent.capabilities:
+        details.append(f"capabilities={','.join(agent.capabilities)}")
     suffix = f" ({'; '.join(details)})" if details else ""
     lines.append(f"{prefix}{connector}{name}: {title}{suffix}")
     next_prefix = prefix + ("    " if is_last else "|   ")

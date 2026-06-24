@@ -443,7 +443,8 @@ class HermesRunner:
             if agent.manager:
                 hierarchy.append(f"manager={agent.manager}")
             suffix = f" ({'; '.join(hierarchy)})" if hierarchy else ""
-            lines.append(f"- {name}: {role}{suffix}. {detail}")
+            capabilities = f" Capabilities: {', '.join(agent.capabilities)}." if agent.capabilities else ""
+            lines.append(f"- {name}: {role}{suffix}. {detail}{capabilities}")
         for name in sorted(self._org.topics):
             topic = self._org.topics[name]
             members = ", ".join(topic.agents)

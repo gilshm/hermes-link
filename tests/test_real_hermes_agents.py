@@ -124,6 +124,48 @@ class RealHermesAgentTests(unittest.TestCase):
         self.assertIn("HERMES_LINK_SKILL_TEST_PONG", completed.stdout)
         self.assertIn("HERMES_LINK_SKILL_TEST_DONE", completed.stdout)
 
+    def test_hermes_link_cli_selects_agent_by_capability(self) -> None:
+        run_id = f"HERMES_CAPABILITY_ROUTE_{uuid.uuid4().hex}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "capability-events.jsonl"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "hermes_link.cli",
+                    "chat",
+                    "hl_ceo",
+                    "Use the Hermes Link org directory capabilities. Send exactly one message to the agent "
+                    f"whose capabilities include api and ask it to reply with {run_id} HERMES_CAPABILITY_BACKEND_OK. "
+                    "Do not send to hl_advisor or hl_frontend_engineer. After that agent replies, answer "
+                    "the user with HERMES_CAPABILITY_ROUTE_DONE.",
+                    "--max-messages",
+                    "4",
+                    "--timeout",
+                    str(TIMEOUT_SECONDS),
+                    "--log-path",
+                    str(log_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS * 3,
+                cwd=REPO_ROOT,
+            )
+
+            self.assertEqual(
+                completed.returncode,
+                0,
+                f"capability route failed with exit code {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+            )
+            events = log_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("[TOOL_ERROR]", completed.stdout)
+        self.assertIn("HERMES_CAPABILITY_ROUTE_DONE", completed.stdout)
+        self.assertIn('"to_agent": "hl_backend_engineer"', events)
+        self.assertNotIn('"to_agent": "hl_frontend_engineer"', events)
+        self.assertIn(run_id, events)
+
     def test_hermes_link_cli_runs_parallel_conversations(self) -> None:
         run_ids = [f"HERMES_PARALLEL_{uuid.uuid4().hex}" for _ in range(2)]
 

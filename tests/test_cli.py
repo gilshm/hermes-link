@@ -223,12 +223,17 @@ class CliTests(unittest.TestCase):
                         "    title: CTO",
                         "    team: executive",
                         "    manager: hl_ceo",
+                        "    capabilities:",
+                        "      - architecture",
                         "    expertise: Technical lead",
                         "  hl_backend_engineer:",
                         "    command: hl_backend_engineer",
                         "    title: Backend Engineer",
                         "    team: engineering",
                         "    manager: hl_cto",
+                        "    capabilities:",
+                        "      - api",
+                        "      - services",
                         "    expertise: Backend",
                         "groups:",
                         "  engineering:",
@@ -247,7 +252,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("routing: strict_hierarchical", output.getvalue())
         self.assertIn("`-- hl_ceo: CEO", output.getvalue())
-        self.assertIn("`-- hl_backend_engineer: Backend Engineer", output.getvalue())
+        self.assertIn("capabilities=architecture", output.getvalue())
+        self.assertIn("`-- hl_backend_engineer: Backend Engineer (team=engineering; manager=hl_cto; capabilities=api,services)", output.getvalue())
         self.assertIn("- @engineering: hl_backend_engineer", output.getvalue())
         self.assertIn("- @direct_reports: sender's direct reports", output.getvalue())
         self.assertIn("- @peers: sender's same-manager peers", output.getvalue())
@@ -263,6 +269,8 @@ class CliTests(unittest.TestCase):
                         "agents:",
                         "  hl_ceo:",
                         "    command: hl_ceo",
+                        "    capabilities:",
+                        "      - delegation",
                         "    expertise: Coordinator",
                     ]
                 ),
@@ -281,6 +289,7 @@ class CliTests(unittest.TestCase):
                 inspect.return_value.plugin_enabled = True
                 inspect.return_value.agent.command = "hl_ceo"
                 inspect.return_value.agent.expertise = "Coordinator"
+                inspect.return_value.agent.capabilities = ("delegation",)
                 health.return_value.ok = True
                 health.return_value.response = "HERMES_LINK_HEALTH_OK"
                 health.return_value.error = ""
@@ -288,6 +297,7 @@ class CliTests(unittest.TestCase):
                 exit_code = main(["agents", "--org", str(org), "--check"])
 
         self.assertEqual(exit_code, 0)
+        self.assertIn("capabilities: delegation", output.getvalue())
         self.assertIn("health: ok", output.getvalue())
         self.assertIn("HERMES_LINK_HEALTH_OK", output.getvalue())
 

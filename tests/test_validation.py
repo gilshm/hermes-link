@@ -50,6 +50,28 @@ class ValidationTests(unittest.TestCase):
 
         self.assertIn("routing must be flat or strict_hierarchical", errors)
 
+    def test_validate_org_rejects_invalid_capabilities(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            org = _write_repo(root, expertise="Coordinator")
+            org.write_text(
+                "\n".join(
+                    [
+                        "agents:",
+                        "  hl_ceo:",
+                        "    command: hl_ceo",
+                        '    expertise: "Coordinator"',
+                        "    capabilities: api",
+                        "skill: skills/agent-comms/SKILL.md",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            errors = validate_org(org, repo_root=root)
+
+        self.assertIn("agent capabilities must be a list of strings", errors)
+
 
 def _write_repo(root: Path, *, expertise: str) -> Path:
     skill = root / "skills" / "agent-comms" / "SKILL.md"
@@ -67,6 +89,8 @@ def _write_repo(root: Path, *, expertise: str) -> Path:
                 "  hl_ceo:",
                 "    command: hl_ceo",
                 f'    expertise: "{expertise}"',
+                "    capabilities:",
+                "      - delegation",
                 "skill: skills/agent-comms/SKILL.md",
             ]
         ),

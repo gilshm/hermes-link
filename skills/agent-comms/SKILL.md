@@ -9,8 +9,9 @@ Hermes Link can deliver messages to another agent in the org while preserving
 that agent's Hermes session for the routed conversation.
 
 Use the Hermes Link org directory to decide who to contact. Contact another
-agent when their expertise is a better fit for part of the user's request, when
-you need a second opinion, or when the user explicitly asks you to talk to them.
+agent when their capabilities or expertise are a better fit for part of the
+user's request, when you need a second opinion, or when the user explicitly asks
+you to talk to them.
 
 If the `route_message` tool is available, use it to contact another agent:
 
@@ -81,7 +82,8 @@ SEND_ALL @direct_reports: Please each give a short status update.
 Rules:
 
 - Use only agent ids that exist in the org.
-- Choose the recipient based on the expertise listed in the org directory.
+- Choose the recipient based on the capabilities first, then the expertise
+  listed in the org directory.
 - Use `HANDOFF` only when the target agent should become the final owner of the
   conversation and respond directly to the user.
 - If the `route_message` tool is available, prefer `mode="handoff"` over the

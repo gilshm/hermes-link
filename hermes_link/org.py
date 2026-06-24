@@ -15,6 +15,7 @@ class AgentConfig:
     name: str
     command: str
     expertise: str
+    capabilities: tuple[str, ...] = ()
     title: str = ""
     team: str = ""
     manager: str = ""
@@ -139,6 +140,7 @@ def _load_agents(raw: Any) -> dict[str, AgentConfig]:
         expertise = value.get("expertise", "")
         if not isinstance(expertise, str):
             raise ValueError(f"agent {name} expertise must be a string")
+        capabilities = _optional_string_list(value, "capabilities")
         title = _optional_string(value, "title", name)
         team = _optional_string(value, "team", "")
         manager = _optional_string(value, "manager", "")
@@ -146,6 +148,7 @@ def _load_agents(raw: Any) -> dict[str, AgentConfig]:
             name=name,
             command=command,
             expertise=expertise.strip(),
+            capabilities=capabilities,
             title=title.strip(),
             team=team.strip(),
             manager=manager.strip(),
@@ -162,6 +165,16 @@ def _optional_string(value: dict[str, Any], key: str, default: str) -> str:
     if not isinstance(raw, str):
         raise ValueError(f"agent {key} must be a string")
     return raw
+
+
+def _optional_string_list(value: dict[str, Any], key: str) -> tuple[str, ...]:
+    raw = value.get(key, [])
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        raise ValueError(f"agent {key} must be a list of strings")
+    cleaned = tuple(item.strip() for item in raw if item.strip())
+    if len(cleaned) != len(set(cleaned)):
+        raise ValueError(f"agent {key} must not contain duplicates")
+    return cleaned
 
 
 def _load_topics(raw: Any, agents: dict[str, AgentConfig]) -> dict[str, TopicConfig]:
