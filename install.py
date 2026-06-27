@@ -7,18 +7,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+from hermes_link.config import resolve_hermes_home, save_runtime_config
 from hermes_link.org import load_org
 
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_ORG = REPO_ROOT / "config" / "org.yaml"
-DEFAULT_HERMES_HOME = Path.home() / ".hermes"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Install Hermes Link agent communication support")
     parser.add_argument("--org", type=Path, default=DEFAULT_ORG)
-    parser.add_argument("--hermes-home", type=Path, default=DEFAULT_HERMES_HOME)
+    parser.add_argument("--hermes-home", type=Path, default=None)
     parser.add_argument(
         "--profile",
         action="append",
@@ -33,20 +33,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--create-profiles", action="store_true", help="Create missing Hermes profiles from org.yaml first.")
     parser.add_argument("--clone-from", help="Profile to clone when creating missing org profiles.")
     args = parser.parse_args(argv)
+    hermes_home = _prompt_hermes_home(REPO_ROOT, explicit=args.hermes_home)
+    save_runtime_config(REPO_ROOT, hermes_home=str(hermes_home))
 
     org = load_org(args.org)
     if args.create_profiles:
         for created in create_profiles_from_org(
             org,
-            hermes_home=args.hermes_home,
+            hermes_home=hermes_home,
             clone_from=args.clone_from,
         ):
             print(created)
 
     profiles = select_profiles(
-        hermes_home=args.hermes_home,
+        hermes_home=hermes_home,
         requested=args.profiles,
-        default_profiles=sorted(discover_profiles(args.hermes_home) or org.agents),
+        default_profiles=sorted(discover_profiles(hermes_home) or org.agents),
         install_all=args.all,
     )
 
@@ -58,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         for profile in profiles:
             destination = install_skill(
                 skill_path=org.skill_path,
-                hermes_home=args.hermes_home,
+                hermes_home=hermes_home,
                 profile=profile,
             )
             print(f"installed skill for {profile}: {destination}")
@@ -67,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         for profile in profiles:
             destination = install_plugin(
                 plugin_path=REPO_ROOT / ".hermes" / "plugins" / "hermes-link",
-                hermes_home=args.hermes_home,
+                hermes_home=hermes_home,
                 profile=profile,
             )
             print(f"installed plugin for {profile}: {destination}")
@@ -96,6 +98,16 @@ def install_wrapper(repo_root: Path) -> Path:
     mode = wrapper.stat().st_mode
     wrapper.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return wrapper
+
+
+def _prompt_hermes_home(repo_root: Path, *, explicit: Path | None) -> Path:
+    default_home = resolve_hermes_home(repo_root, explicit=explicit)
+    if explicit is not None or not sys.stdin.isatty():
+        return default_home
+    answer = input(f"Where is Hermes installed? Press Enter for {default_home}: ").strip()
+    if not answer:
+        return default_home
+    return Path(answer).expanduser().resolve()
 
 
 def create_profiles_from_org(org, *, hermes_home: Path, clone_from: str | None = None) -> list[str]:

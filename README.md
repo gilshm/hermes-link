@@ -43,9 +43,15 @@ profiles:
 python3 install.py
 ```
 
-The installer discovers profiles under `~/.hermes/profiles` and asks where to
-install. Press Enter to install into all discovered profiles. In non-interactive
-runs, it defaults to all profiles.
+At startup, the installer asks where Hermes is installed. Press Enter to use
+the current default, which falls back to `~/.hermes`. The selected Hermes home
+is stored in `.hermes-link/config.json` and reused later by commands such as
+`bin/hermes_link agents` and `bin/hermes_link doctor`. You can override it for
+one run with `--hermes-home` or `HERMES_HOME=/path/to/hermes`.
+
+After resolving Hermes home, the installer discovers profiles under
+`<hermes-home>/profiles` and asks where to install. Press Enter to install into
+all discovered profiles. In non-interactive runs, it defaults to all profiles.
 
 Installed pieces:
 
@@ -59,6 +65,7 @@ Useful installer flags:
 ```bash
 python3 install.py --create-profiles --clone-from base
 python3 install.py --all
+python3 install.py --hermes-home /opt/hermes
 python3 install.py --profile hl_ceo --profile hl_advisor
 python3 install.py --skip-wrapper
 python3 install.py --skip-skills

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from hermes_link.cli import main
+from hermes_link.config import save_runtime_config
 from hermes_link.hermes_runner import AgentTurn, ChatResult
 from hermes_link.log import EventLog
 from hermes_link.message import Message
@@ -327,6 +328,31 @@ class CliTests(unittest.TestCase):
         self.assertIn("health: ok", output.getvalue())
         self.assertIn("HERMES_LINK_HEALTH_OK", output.getvalue())
 
+    def test_agents_command_uses_saved_hermes_home_when_flag_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            org = _write_task_org(root)
+            hermes_home = root / "custom-hermes"
+            save_runtime_config(root, hermes_home=str(hermes_home))
+            output = io.StringIO()
+
+            with (
+                mock.patch("sys.stdout", output),
+                mock.patch("hermes_link.cli.REPO_ROOT", root),
+                mock.patch("hermes_link.cli.inspect_agent") as inspect,
+            ):
+                inspect.return_value.command_available = True
+                inspect.return_value.skill_installed = True
+                inspect.return_value.plugin_installed = True
+                inspect.return_value.plugin_enabled = True
+                inspect.return_value.agent.command = "hl_cto"
+                inspect.return_value.agent.expertise = "CTO"
+                inspect.return_value.agent.capabilities = ()
+                exit_code = main(["agents", "--org", str(org)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(inspect.call_args.kwargs["hermes_home"], hermes_home.resolve())
+
     def test_doctor_command_returns_failure_for_failed_check(self) -> None:
         output = io.StringIO()
 
@@ -358,6 +384,25 @@ class CliTests(unittest.TestCase):
         self.assertTrue(doctor.call_args.kwargs["route_matrix"])
         self.assertEqual(doctor.call_args.kwargs["route_from"], "hl_advisor")
         self.assertIn("OK route hl_advisor -> hl_backend_engineer: blocked by policy", output.getvalue())
+
+    def test_doctor_command_uses_saved_hermes_home_when_flag_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            org = _write_task_org(root)
+            hermes_home = root / "custom-hermes"
+            save_runtime_config(root, hermes_home=str(hermes_home))
+            output = io.StringIO()
+
+            with (
+                mock.patch("sys.stdout", output),
+                mock.patch("hermes_link.cli.REPO_ROOT", root),
+                mock.patch("hermes_link.cli.run_doctor") as doctor,
+            ):
+                doctor.return_value = [SimpleNamespace(ok=True, name="ok", detail="ready")]
+                exit_code = main(["doctor", "--org", str(org)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(doctor.call_args.kwargs["hermes_home"], hermes_home.resolve())
 
 
 if __name__ == "__main__":

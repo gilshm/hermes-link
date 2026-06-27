@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+from hermes_link.config import repo_root, resolve_hermes_home
 from hermes_link.doctor import run_doctor
 from hermes_link.hermes_runner import HermesRunner
 from hermes_link.log import EventLog, default_log_path, format_event, format_trace, format_trace_mermaid, iter_events, trace_events
@@ -15,7 +16,7 @@ from hermes_link.status import check_agent_health, inspect_agent, yes_no
 from hermes_link.validation import validate_org
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repo_root()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
 
     agents = subparsers.add_parser("agents", help="Show configured org agents")
     agents.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
-    agents.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
+    agents.add_argument("--hermes-home", type=Path, default=None)
     agents.add_argument("--check", action="store_true", help="Run a smoke prompt against each agent")
     agents.add_argument("--timeout", type=int, default=30)
 
@@ -64,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
 
     doctor = subparsers.add_parser("doctor", help="Check Hermes Link config and install state")
     doctor.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
-    doctor.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
+    doctor.add_argument("--hermes-home", type=Path, default=None)
     doctor.add_argument("--check-agents", action="store_true", help="Run live smoke prompts for configured agents")
     doctor.add_argument("--route-matrix", action="store_true", help="Show static allowed/blocked routes from org policy")
     doctor.add_argument("--live-route-matrix", action="store_true", help="Ask real agents to emit SEND directives and verify route policy behavior")
@@ -80,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     org_graph.add_argument("--org", type=Path, default=REPO_ROOT / "config" / "org.yaml")
 
     args = parser.parse_args(argv)
+    hermes_home = resolve_hermes_home(REPO_ROOT, explicit=getattr(args, "hermes_home", None))
     if args.command == "chat":
         thread_id = args.thread_id or f"cli-{uuid4().hex[:8]}"
         result = HermesRunner(
@@ -121,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "agents":
         org = load_org(args.org)
         for name in sorted(org.agents):
-            status = inspect_agent(org.agents[name], hermes_home=args.hermes_home)
+            status = inspect_agent(org.agents[name], hermes_home=hermes_home)
             print(f"{name}")
             print(f"  command: {status.agent.command} ({'found' if status.command_available else 'missing'})")
             print(f"  expertise: {status.agent.expertise or 'not specified'}")
@@ -142,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         checks = run_doctor(
             org_path=args.org,
             repo_root=REPO_ROOT,
-            hermes_home=args.hermes_home,
+            hermes_home=hermes_home,
             check_agents=args.check_agents,
             route_matrix=args.route_matrix,
             live_route_matrix=args.live_route_matrix,

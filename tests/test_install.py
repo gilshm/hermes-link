@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from install import (
+    _prompt_hermes_home,
     create_profiles_from_org,
     discover_profiles,
     enable_plugin,
@@ -14,6 +15,7 @@ from install import (
     install_wrapper,
     select_profiles,
 )
+from hermes_link.config import load_runtime_config, save_runtime_config
 from hermes_link.org import load_org
 
 
@@ -173,6 +175,29 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(results, ["created profile: hl_advisor", "profile exists: hl_ceo"])
         run.assert_called_once()
         self.assertIn("--clone", run.call_args.args[0])
+
+    def test_prompt_hermes_home_uses_saved_default_and_accepts_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            saved_home = root / "custom-hermes"
+            save_runtime_config(root, hermes_home=str(saved_home))
+
+            with (
+                mock.patch("sys.stdin.isatty", return_value=True),
+                mock.patch("builtins.input", return_value=str(root / "override-hermes")),
+            ):
+                selected = _prompt_hermes_home(root, explicit=None)
+
+        self.assertEqual(selected, (root / "override-hermes").resolve())
+
+    def test_runtime_config_can_store_hermes_home(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            hermes_home = root / "hermes"
+
+            save_runtime_config(root, hermes_home=str(hermes_home))
+
+            self.assertEqual(load_runtime_config(root)["hermes_home"], str(hermes_home))
 
 
 def _write_org(root: Path) -> Path:
