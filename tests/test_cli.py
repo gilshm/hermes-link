@@ -405,5 +405,26 @@ class CliTests(unittest.TestCase):
         self.assertEqual(doctor.call_args.kwargs["hermes_home"], hermes_home.resolve())
 
 
+def _write_task_org(root: Path) -> Path:
+    skill = root / "skills" / "agent-comms" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("Use SEND agent_id: message.", encoding="utf-8")
+    org = root / "config" / "org.yaml"
+    org.parent.mkdir()
+    org.write_text(
+        "\n".join(
+            [
+                "agents:",
+                "  hl_cto:",
+                "    command: hl_cto",
+                "    expertise: CTO",
+                "skill: skills/agent-comms/SKILL.md",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return org
+
+
 if __name__ == "__main__":
     unittest.main()
