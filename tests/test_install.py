@@ -2,6 +2,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+import os
 from pathlib import Path
 from unittest import mock
 
@@ -81,19 +82,20 @@ class InstallTests(unittest.TestCase):
         with mock.patch(
             "subprocess.run",
             return_value=subprocess.CompletedProcess(
-                ["hl_ceo", "plugins", "enable", "hermes-link"],
+                ["hermes", "-p", "hl_ceo", "plugins", "enable", "hermes-link"],
                 0,
                 stdout="enabled",
                 stderr="",
             ),
         ) as run:
-            enable_plugin(profile="hl_ceo", plugin_name="hermes-link")
+            enable_plugin(hermes_home=Path("/tmp/hermes"), profile="hl_ceo", plugin_name="hermes-link")
 
         run.assert_called_once_with(
-            ["hl_ceo", "plugins", "enable", "hermes-link"],
+            ["hermes", "-p", "hl_ceo", "plugins", "enable", "hermes-link"],
             check=False,
             capture_output=True,
             text=True,
+            env={**os.environ, "HERMES_HOME": "/tmp/hermes"},
         )
 
     def test_discover_profiles(self) -> None:

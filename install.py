@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import stat
 import subprocess
@@ -74,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"installed plugin for {profile}: {destination}")
             if not args.skip_plugin_enable:
-                enable_plugin(profile=profile, plugin_name="hermes-link")
+                enable_plugin(hermes_home=hermes_home, profile=profile, plugin_name="hermes-link")
                 print(f"enabled plugin for {profile}: hermes-link")
 
     first_agent = next(iter(org.agents))
@@ -127,7 +128,13 @@ def create_profiles_from_org(org, *, hermes_home: Path, clone_from: str | None =
         if description:
             args.extend(["--description", description])
         args.append(profile)
-        completed = subprocess.run(args, check=False, capture_output=True, text=True)
+        completed = subprocess.run(
+            args,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=_hermes_env(hermes_home),
+        )
         if completed.returncode != 0:
             raise RuntimeError(
                 f"failed to create Hermes profile {profile}\n"
@@ -163,12 +170,13 @@ def install_plugin(*, plugin_path: Path, hermes_home: Path, profile: str) -> Pat
     return destination
 
 
-def enable_plugin(*, profile: str, plugin_name: str) -> None:
+def enable_plugin(*, hermes_home: Path, profile: str, plugin_name: str) -> None:
     completed = subprocess.run(
-        [profile, "plugins", "enable", plugin_name],
+        ["hermes", "-p", profile, "plugins", "enable", plugin_name],
         check=False,
         capture_output=True,
         text=True,
+        env=_hermes_env(hermes_home),
     )
     if completed.returncode != 0:
         raise RuntimeError(
@@ -183,6 +191,12 @@ def discover_profiles(hermes_home: Path) -> list[str]:
     if not profiles_dir.exists():
         return []
     return sorted(path.name for path in profiles_dir.iterdir() if path.is_dir())
+
+
+def _hermes_env(hermes_home: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["HERMES_HOME"] = str(hermes_home)
+    return env
 
 
 def select_profiles(
