@@ -1,137 +1,179 @@
 agents:
-  hl_ceo:
-    command: hl_ceo
-    title: CEO
-    team: executive
+  ac_chief_investor:
+    command: ac_chief_investor
+    title: Chief Investor
+    team: leadership
     capabilities:
       - delegation
       - executive-decision
       - synthesis
+      - portfolio-review
+      - cross-strategy-allocation
     expertise: >
-      First-contact executive and final decision maker. Good for understanding
-      the user's goal, delegating to the right employee, resolving tradeoffs,
-      and synthesizing a concise final answer.
-  hl_advisor:
-    command: hl_advisor
-    title: Strategic Advisor
-    team: executive
-    manager: hl_ceo
+      First-contact investment lead and final internal decision maker. Good for
+      reviewing what changed, synthesizing recommendations across horizons,
+      resolving conflicts between strategies, prioritizing ideas, and preparing
+      a concise approval queue for the user.
+
+  ac_swing_trader:
+    command: ac_swing_trader
+    title: Swing Trader
+    team: investing
+    manager: ac_chief_investor
     capabilities:
-      - strategy
+      - swing-trading
+      - technical-analysis
+      - catalyst-trading
+      - entry-exit-planning
+    expertise: >
+      Specialist in 2-10 day US equity swing trades. Good for momentum setups,
+      breakouts, reversals, short-term catalysts, and defining entries, stops,
+      targets, and invalidation levels.
+
+  ac_position_trader:
+    command: ac_position_trader
+    title: Position Trader
+    team: investing
+    manager: ac_chief_investor
+    capabilities:
+      - position-trading
+      - trend-following
+      - sector-rotation
+      - medium-term-planning
+    expertise: >
+      Specialist in 1-6 week US equity trades. Good for trend continuation,
+      post-earnings drift, rotation themes, medium-term setups, and managing
+      trades over a multi-week horizon.
+
+  ac_long_term_investor:
+    command: ac_long_term_investor
+    title: Long-Term Investor
+    team: investing
+    manager: ac_chief_investor
+    capabilities:
+      - long-term-investing
+      - thesis-development
+      - valuation-awareness
+      - accumulation-planning
+    expertise: >
+      Specialist in longer-horizon investing ideas. Good for durable thesis
+      building, business quality evaluation, accumulation plans, multi-month to
+      multi-year holdings, and distinguishing investment theses from shorter
+      trades.
+
+  ac_risk_manager:
+    command: ac_risk_manager
+    title: Risk Manager
+    team: risk
+    manager: ac_chief_investor
+    capabilities:
       - risk-review
-      - critique
+      - position-sizing
+      - drawdown-control
+      - event-risk
+      - portfolio-constraints
     expertise: >
-      Independent senior advisor. Good for second opinions, risk spotting,
-      strategy critique, and challenging assumptions before the CEO decides.
-  hl_cto:
-    command: hl_cto
-    title: CTO
-    team: executive
-    manager: hl_ceo
+      Independent risk reviewer. Good for challenging assumptions, enforcing
+      portfolio limits, checking event and liquidity risk, validating sizing,
+      and recommending whether a proposed trade should proceed to approval.
+
+  ac_market_researcher:
+    command: ac_market_researcher
+    title: Market Researcher
+    team: research
+    manager: ac_chief_investor
     capabilities:
-      - architecture
-      - technical-planning
-      - engineering-leadership
+      - market-research
+      - catalysts
+      - earnings-review
+      - news-analysis
+      - options-signal-analysis
     expertise: >
-      Technical executive. Good for architecture direction, engineering
-      tradeoffs, technical feasibility, and deciding what the engineering team
-      should do next.
-  hl_product_manager:
-    command: hl_product_manager
-    title: Product Manager
-    team: product
-    manager: hl_ceo
-    capabilities:
-      - requirements
-      - prioritization
-      - product-scope
-    expertise: >
-      Product lead. Good for user needs, prioritization, requirements, scope,
-      acceptance criteria, and turning vague ideas into concrete product work.
-  hl_backend_engineer:
-    command: hl_backend_engineer
-    title: Backend Engineer
+      Generalist market researcher. Good for earnings context, macro and sector
+      developments, filings, news flow, and interpreting options activity only
+      as a supporting signal for US equity ideas.
+
+  ac_software_engineer:
+    command: ac_software_engineer
+    title: Software Engineer
     team: engineering
-    manager: hl_cto
+    manager: ac_chief_investor
     capabilities:
-      - api
-      - data-models
-      - services
-      - reliability
-      - integrations
+      - data-pipelines
+      - ibkr-integration
+      - backtesting
+      - journaling
+      - reporting
+      - automation
     expertise: >
-      Backend implementation specialist. Good for APIs, data models, services,
-      reliability, integrations, and server-side debugging.
-  hl_frontend_engineer:
-    command: hl_frontend_engineer
-    title: Frontend Engineer
-    team: engineering
-    manager: hl_cto
-    capabilities:
-      - ui
-      - workflows
-      - accessibility
-      - client-architecture
-      - user-facing-polish
-    expertise: >
-      Frontend implementation specialist. Good for UI behavior, workflows,
-      client-side architecture, accessibility, and user-facing polish.
+      Technical owner for the investment system infrastructure. Good for market
+      data services, scans, scoring pipelines, IBKR paper-trading integration,
+      dashboards, journals, audit trails, and tooling that supports the agents.
 
 topics:
-  strategy:
-    default: hl_advisor
-    agents:
-      - hl_advisor
-      - hl_ceo
-  technical:
-    default: hl_cto
-    agents:
-      - hl_cto
-      - hl_backend_engineer
-      - hl_frontend_engineer
-  product:
-    default: hl_product_manager
-    agents:
-      - hl_product_manager
-      - hl_advisor
-  backend:
-    default: hl_backend_engineer
-    agents:
-      - hl_backend_engineer
-      - hl_cto
-  frontend:
-    default: hl_frontend_engineer
-    agents:
-      - hl_frontend_engineer
-      - hl_cto
   review:
-    default: hl_advisor
+    default: ac_chief_investor
     agents:
-      - hl_advisor
-      - hl_cto
+      - ac_chief_investor
+      - ac_risk_manager
+      - ac_market_researcher
+
+  swing:
+    default: ac_swing_trader
+    agents:
+      - ac_swing_trader
+      - ac_market_researcher
+      - ac_risk_manager
+
+  position:
+    default: ac_position_trader
+    agents:
+      - ac_position_trader
+      - ac_market_researcher
+      - ac_risk_manager
+
+  long_term:
+    default: ac_long_term_investor
+    agents:
+      - ac_long_term_investor
+      - ac_market_researcher
+      - ac_risk_manager
+
+  risk:
+    default: ac_risk_manager
+    agents:
+      - ac_risk_manager
+      - ac_chief_investor
+
+  research:
+    default: ac_market_researcher
+    agents:
+      - ac_market_researcher
+      - ac_swing_trader
+      - ac_position_trader
+      - ac_long_term_investor
+
+  engineering:
+    default: ac_software_engineer
+    agents:
+      - ac_software_engineer
+      - ac_chief_investor
 
 groups:
-  leadership:
-    - hl_ceo
-    - hl_advisor
-    - hl_cto
-    - hl_product_manager
-  engineering:
-    - hl_backend_engineer
-    - hl_frontend_engineer
-  product_review:
-    - hl_product_manager
-    - hl_advisor
+  investment_committee:
+    - ac_chief_investor
+    - ac_risk_manager
+    - ac_swing_trader
+    - ac_position_trader
+    - ac_long_term_investor
 
-# Routing has two modes:
-# - flat: every configured agent may contact every other configured agent.
-# - strict_hierarchical: agents may contact managers/reports across the hierarchy,
-#   and peers with the same direct manager may contact each other.
-#
+  strategy_desk:
+    - ac_swing_trader
+    - ac_position_trader
+    - ac_long_term_investor
+    - ac_market_researcher
+
 routing: flat
-# To enable hierarchy enforcement later, change to:
-# routing: strict_hierarchical
-
 skill: skills/agent-comms/SKILL.md
 max_messages: 12
 scatter_timeout: 120
